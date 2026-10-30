@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+.angular/
+.venv/
+__pycache__/
+*.pyc
+.env
+*.spec
+.DS_Store
+release/
+artifacts/

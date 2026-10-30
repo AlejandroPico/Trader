@@ -1,0 +1,13 @@
+import sharp from 'sharp';
+import {mkdir, readFile, writeFile} from 'node:fs/promises';
+await mkdir('public/icons', {recursive:true});
+const svg = await readFile('public/favicon.svg');
+for (const size of [16,32,48,64,128,192,256,512,1024]) await sharp(svg).resize(size,size).png().toFile(`public/icons/icon-${size}.png`);
+await sharp(svg).resize(384,384).extend({top:64,bottom:64,left:64,right:64,background:'#151A24'}).png().toFile('public/icons/icon-maskable.png');
+const pngs = await Promise.all([16,32,48,256].map(s=>sharp(svg).resize(s,s).png().toBuffer()));
+let offset=6+16*pngs.length;
+const head=Buffer.alloc(offset); head.writeUInt16LE(1,2); head.writeUInt16LE(pngs.length,4);
+pngs.forEach((png,i)=>{const s=[16,32,48,256][i];const p=6+i*16; head[p]=head[p+1]=s===256?0:s; head.writeUInt16LE(1,p+4);head.writeUInt16LE(32,p+6);head.writeUInt32LE(png.length,p+8);head.writeUInt32LE(offset,p+12);offset+=png.length;});
+await writeFile('public/icons/trader.ico',Buffer.concat([head,...pngs]));
+const icon=await readFile('public/icons/icon-1024.png');const icns=Buffer.alloc(16);icns.write('icns');icns.writeUInt32BE(icon.length+16,4);icns.write('ic10',8);icns.writeUInt32BE(icon.length+8,12);await writeFile('public/icons/trader.icns',Buffer.concat([icns,icon]));
+console.log('Iconos SVG, PNG, ICO e ICNS generados.');

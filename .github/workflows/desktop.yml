@@ -1,0 +1,42 @@
+name: Crear escritorio
+on:
+  push:
+    branches: [main, 'codex/**']
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+          cache: npm
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+          cache: pip
+      - run: npm ci
+      - run: npm run icons
+      - run: npm run build
+      - run: pip install -r requirements-desktop.txt
+      - if: runner.os == 'Linux'
+        run: pip install 'pywebview[qt]==6.2.1'
+      - run: python scripts/package_desktop.py
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $compiler = Get-ChildItem 'C:\Program Files (x86)\Inno Setup*\ISCC.exe' | Select-Object -First 1
+          if ($compiler) { & $compiler.FullName scripts/trader.iss; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Trader-${{ runner.os }}-${{ runner.arch }}
+          path: release/
+          retention-days: 30
