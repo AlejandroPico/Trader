@@ -213,13 +213,13 @@ export class AppComponent implements OnDestroy {
             (a.symbol + " " + a.name)
               .toLowerCase()
               .includes(this.tableQuery.toLowerCase())) &&
-          (this.minChange === "" ||
+          (this.minChange == null || this.minChange === "" ||
             (this.quotes[a.symbol]?.change ?? -Infinity) >=
               Number(this.minChange)) &&
-          (this.maxChange === "" ||
+          (this.maxChange == null || this.maxChange === "" ||
             (this.quotes[a.symbol]?.change ?? Infinity) <=
               Number(this.maxChange)) &&
-          (this.minPrice === "" ||
+          (this.minPrice == null || this.minPrice === "" ||
             (this.quotes[a.symbol]?.price ?? -Infinity) >=
               Number(this.minPrice)),
       )

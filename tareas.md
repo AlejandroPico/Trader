@@ -39,6 +39,9 @@ Trabajar y subir directamente a **main**. El usuario ha autorizado las subidas y
 - [x] Instalador Windows obligatorio en CI: una ausencia del compilador ya no se omite silenciosamente.
 - [x] README actualizado y política de privacidad publicada en los archivos web.
 - [x] Guía de Google creada en docs/google.md, con los pasos y el dato exacto que falta.
+- [x] Entrega 456894a: pruebas, Pages y paquetes de los tres sistemas completados correctamente en GitHub. El ejecutable empaquetado pasó la nueva prueba de servicio, interfaz e iconos en Windows, macOS y Linux; el instalador Windows también se generó.
+- [x] Verificadas en la web publicada las rutas /Trader/, privacidad y fuentes precargadas en el manifiesto de la PWA.
+- [x] Corregida la limpieza de filtros numéricos del analizador. Comprobación en navegador: 10 resultados con mínimo 1 %, y los 50 activos de nuevo al borrar el límite.
 
 ### Pendiente de configuración del propietario
 
@@ -97,6 +100,7 @@ Icono vectorial original y colorido: verde, azul, rojo, naranja y amarillo. Mant
 - Backend local: python -m uvicorn backend.main:app --host 127.0.0.1 --port 8765.
 - Instalar frontend: npm ci. Pruebas: npm test. Compilar: npm run build. Pages: npm run build:pages.
 - Python: crear entorno virtual e instalar requirements-dev.txt o requirements-desktop.txt según la tarea.
+- El entorno local comprobado con Python 3.15.2 es .venv315; .venv conserva el entorno inicial. El runtime aislado está en .runtimes y no se sube al repositorio.
 - Los CSV importados permanecen solo durante la sesión; las pestañas se guardan, los archivos no. La interfaz lo advierte.
 - El mapa de calor usa pesos ilustrativos explícitos, no capitalización real.
 - Yahoo Finance utiliza una interfaz no oficial y puede limitar consultas; no garantizar cobertura universal ni tiempo real de todas las bolsas.
