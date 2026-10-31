@@ -1,1 +1,121 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Trader · Privacidad</title><link rel="icon" href="favicon.svg"><style>body{margin:0;background:#101318;color:#dce2ec;font:15px/1.75 system-ui,sans-serif}main{max-width:760px;margin:60px auto;padding:0 24px 60px}h1{font-size:30px;font-weight:500}h2{font-size:19px;font-weight:500;margin-top:30px}p{color:#a6b0c0}a{color:#b7a4eb}small{color:#7e899b}img{width:42px;height:42px}</style></head><body><main><img src="favicon.svg" alt="Trader"><h1>Privacidad</h1><small>Actualizado: 31 de octubre de 2026</small><h2>Datos locales</h2><p>Trader guarda pestañas, seguimiento, trazados, posiciones manuales, alertas y agenda en el navegador o perfil de escritorio. Los CSV permanecen en memoria durante la sesión. La aplicación no incorpora herramientas propias de publicidad ni analítica.</p><h2>Consultas de datos</h2><p>Las consultas envían los símbolos o indicadores necesarios al servidor de datos y a Yahoo Finance, Binance o Banco Mundial. Los proveedores pueden recibir la dirección IP de la conexión y aplicar sus propias políticas. La demostración utiliza series sintéticas y no necesita cotizaciones externas.</p><h2>Google y Drive</h2><p>Conectar Google es opcional. Se solicita el correo para identificar la cuenta y permiso para guardar o recuperar el espacio en la carpeta privada de datos de esta aplicación en Drive. No se solicita acceso general a los documentos. Los tokens permanecen en memoria; no se guardan en el almacenamiento local ni en el repositorio.</p><p>Guardar sustituye la copia de Google y recuperar sustituye el espacio local. El espacio puede contener posiciones o notas introducidas por el usuario. Exportar crea un archivo en el equipo; compartirlo depende del usuario.</p><h2>Escritorio</h2><p>La sincronización abre el navegador del sistema y utiliza una conexión temporal de diez minutos con el servicio local del mismo equipo. El usuario solicita la devolución del espacio. El identificador temporal permanece en memoria y no se envía a Google dentro del espacio.</p><h2>Control y conservación</h2><p>Se puede desconectar desde Ajustes y revocar el permiso en la cuenta de Google. Los datos locales se conservan hasta borrar los datos del navegador o el perfil de la aplicación. La copia de Drive se gestiona mediante las opciones de datos de aplicaciones de Google Drive. Los registros técnicos dependen del alojamiento del servidor.</p><h2>Contacto</h2><p>Comunicar problemas en las <a href="https://github.com/AlejandroPico/Trader/issues">incidencias del repositorio</a>. No publicar información personal ni credenciales en incidencias públicas.</p><p><a href="./">Volver a Trader</a></p></main></body></html>
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Trader · Privacidad</title>
+    <link rel="icon" href="favicon.svg" />
+    <style>
+      body {
+        margin: 0;
+        background: #101318;
+        color: #dce2ec;
+        font:
+          15px/1.75 system-ui,
+          sans-serif;
+      }
+      main {
+        max-width: 760px;
+        margin: 60px auto;
+        padding: 0 24px 60px;
+      }
+      h1 {
+        font-size: 30px;
+        font-weight: 500;
+      }
+      h2 {
+        font-size: 19px;
+        font-weight: 500;
+        margin-top: 30px;
+      }
+      p {
+        color: #a6b0c0;
+      }
+      a {
+        color: #b7a4eb;
+      }
+      small {
+        color: #7e899b;
+      }
+      img {
+        width: 42px;
+        height: 42px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="favicon.svg" alt="Trader" />
+      <h1>Privacidad</h1>
+      <small>Actualizado: 31 de octubre de 2026</small>
+      <h2>Datos en el equipo</h2>
+      <p>
+        Trader guarda las pestañas, seguimiento, preferencias, trazados,
+        posiciones manuales, alertas y agenda en el navegador o perfil de
+        escritorio. Los CSV permanecen en memoria durante la sesión. No se
+        incluyen herramientas propias de publicidad ni analítica.
+      </p>
+      <h2>Consultas de mercados</h2>
+      <p>
+        Se envían los símbolos e indicadores necesarios al servidor de
+        cotizaciones y a los proveedores Yahoo Finance, Binance o Banco Mundial.
+        Estos servicios pueden recibir la dirección IP de la conexión y aplican
+        sus propias políticas. Las cifras ausentes permanecen vacías; las
+        cotizaciones muestran fuente y fecha.
+      </p>
+      <h2>Cuenta de Google</h2>
+      <p>
+        El acceso es opcional y utiliza Firebase Authentication, un servicio de
+        Google. Google gestiona la autenticación. Trader recibe el identificador
+        de usuario, nombre, correo y fotografía del perfil para mostrar la
+        cuenta. No solicita acceso a documentos. El SDK oficial conserva la
+        sesión en el navegador hasta cerrar sesión o borrar los datos del sitio.
+      </p>
+      <h2>Sincronización de perfiles</h2>
+      <p>
+        Al iniciar sesión, los perfiles se guardan automáticamente en Cloud
+        Firestore, dentro del proyecto del propietario de Trader. Pueden
+        contener pestañas, seguimiento, trazados, preferencias, posiciones
+        introducidas manualmente, alertas y notas de agenda. Los archivos CSV no
+        se suben. Las reglas limitan el acceso al usuario autenticado
+        propietario de cada perfil; los administradores del proyecto tienen las
+        facultades de administración de ese servicio.
+      </p>
+      <p>
+        Los cambios pendientes y una copia de trabajo se mantienen en el equipo
+        para recuperarlos al volver a conectar. En equipos compartidos, cerrar
+        sesión y borrar los datos del sitio elimina la sesión y las copias
+        locales. La configuración pública de Firebase no es una credencial
+        administrativa.
+      </p>
+      <h2>Escritorio</h2>
+      <p>
+        El acceso de Google se abre en el navegador del sistema. El resultado
+        vuelve automáticamente al proceso local mediante una conexión de un solo
+        uso que caduca a los cinco minutos, comprobando origen y un
+        identificador aleatorio. La aplicación no envía la contraseña de Google
+        a su servidor Python.
+      </p>
+      <h2>Conservación y control</h2>
+      <p>
+        Los datos locales se conservan hasta borrar los datos del sitio o el
+        perfil de la aplicación. Cerrar sesión no borra los perfiles de la
+        cuenta. Para eliminar los datos remotos, contactar con el propietario;
+        la eliminación desde la aplicación todavía no está implementada. El
+        acceso a la cuenta también puede revisarse desde las opciones de
+        seguridad de Google.
+      </p>
+      <h2>Contacto</h2>
+      <p>
+        Comunicar problemas en las
+        <a href="https://github.com/AlejandroPico/Trader/issues"
+          >incidencias del proyecto</a
+        >, sin publicar datos personales ni credenciales.
+        <a href="https://alejandropico.github.io/Portfolio/"
+          >Alejandro Pico · Portfolio</a
+        >.
+      </p>
+      <p><a href="./">Volver a Trader</a></p>
+    </main>
+  </body>
+</html>

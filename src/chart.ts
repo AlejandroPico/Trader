@@ -8,6 +8,8 @@ import {
   AfterViewInit,
   OnChanges,
   OnDestroy,
+  ChangeDetectorRef,
+  inject,
 } from "@angular/core";
 import * as echarts from "echarts/core";
 import {
@@ -15,40 +17,30 @@ import {
   LineChart,
   BarChart,
   TreemapChart,
-  MapChart,
 } from "echarts/charts";
 import {
   GridComponent,
   TooltipComponent,
   DataZoomComponent,
   MarkLineComponent,
-  VisualMapComponent,
-  GeoComponent,
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import { Candle, sma, ema, rsi, bollinger, compareReturns } from "./analysis";
 import { Drawing, Tab } from "./state";
 import { Asset, Quote } from "./market";
-import world from "world-atlas/countries-110m.json";
-import { feature } from "topojson-client";
+import { GeoMap } from "./geo-map";
+import { heatmapTree, HeatNode } from "./heatmap";
 echarts.use([
   CandlestickChart,
   LineChart,
   BarChart,
   TreemapChart,
-  MapChart,
   GridComponent,
   TooltipComponent,
   DataZoomComponent,
   MarkLineComponent,
-  VisualMapComponent,
-  GeoComponent,
   CanvasRenderer,
 ]);
-echarts.registerMap(
-  "world",
-  feature(world as never, (world as any).objects.countries) as any,
-);
 export { echarts };
 @Component({
   selector: "price-chart",
@@ -375,28 +367,53 @@ export class PriceChart implements AfterViewInit, OnChanges, OnDestroy {
     );
   }
 }
-const countryNames: Record<string, string> = {
-  "United States of America": "Estados Unidos",
-  Spain: "España",
-  France: "Francia",
-  Germany: "Alemania",
-  Japan: "Japón",
-  China: "China",
-  "United Kingdom": "Reino Unido",
-  India: "India",
-  Brazil: "Brasil",
-  Australia: "Australia",
-  Canada: "Canadá",
-};
 @Component({
   selector: "market-visual",
   standalone: true,
-  template:
-    "<div #canvas class=\"visual-canvas\" role=\"img\" [attr.aria-label]=\"kind==='map'?'Mapa de mercados por país':'Mapa de calor de activos'\"></div>",
+  imports: [GeoMap],
+  template: `@if (kind === "map" || kind === "macro") {
+      <geo-map
+        [assets]="assets"
+        [quotes]="quotes"
+        [macro]="kind === 'macro'"
+        [macroValues]="macroValues"
+        [selected]="selectedCountry"
+        (pick)="pick.emit($event)"
+      />
+    } @else {
+      <div class="heatmap-viewport">
+        <div
+          #canvas
+          class="visual-canvas"
+          role="img"
+          aria-label="Mapa de calor de activos por sector e industria"
+        ></div>
+        <nav class="heatmap-breadcrumb" aria-label="Nivel del mapa de calor">
+          @for (crumb of breadcrumbs; track crumb.id) {
+            <button
+              (click)="drill(crumb.id)"
+              [attr.aria-current]="crumb.id === rootId ? 'location' : null"
+            >
+              {{ crumb.name }}
+            </button>
+          }
+        </nav>
+      </div>
+    }`,
 })
 export class MarketVisual implements AfterViewInit, OnChanges, OnDestroy {
   @ViewChild("canvas") el!: ElementRef;
   @Input() kind = "heat";
+  @Input() selectedCountry = "";
+  @Input() sizeMetric: "uniform" | "volume" = "uniform";
+  private signature = "";
+  rootId = "";
+  breadcrumbs = [{ id: "", name: "Mercado" }];
+  private heatTree: HeatNode[] = [];
+  private roamRect?: { x: number; y: number; width: number; height: number };
+  private restoring = false;
+  private universeKey = "";
+  private cdr = inject(ChangeDetectorRef);
   @Input() assets: Asset[] = [];
   @Input() quotes: Record<string, Quote> = {};
   @Input() theme = "dark";
@@ -409,16 +426,26 @@ export class MarketVisual implements AfterViewInit, OnChanges, OnDestroy {
   private chart?: echarts.ECharts;
   private observer?: ResizeObserver;
   ngAfterViewInit() {
+    if (!this.el) return;
     this.chart = echarts.init(this.el.nativeElement);
     this.observer = new ResizeObserver(() => this.chart?.resize());
     this.observer.observe(this.el.nativeElement);
-    this.chart.on("click", (e: any) =>
-      this.pick.emit(
-        this.kind === "map" || this.kind === "macro"
-          ? (countryNames[e.name] ?? "")
-          : (e.data?.symbol ?? ""),
-      ),
-    );
+    this.chart.on("click", (e: any) => {
+      if (e.data?.symbol) this.pick.emit(e.data.symbol);
+      else if (e.data?.id) {
+        this.drill(e.data.id);
+      }
+      this.cdr.markForCheck();
+    });
+    for (const event of ["treemaprender", "treemapmove"])
+      this.chart.on(event, (payload: any) => {
+        if (
+          !this.restoring &&
+          payload.rootRect &&
+          Object.values(payload.rootRect).every(Number.isFinite)
+        )
+          this.roamRect = { ...payload.rootRect };
+      });
     this.render();
   }
   ngOnChanges() {
@@ -428,133 +455,181 @@ export class MarketVisual implements AfterViewInit, OnChanges, OnDestroy {
     this.observer?.disconnect();
     this.chart?.dispose();
   }
+  drill(id: string) {
+    this.roamRect = undefined;
+    this.rootId = id;
+    this.updateBreadcrumbs();
+    if (!id) {
+      this.signature = "";
+      this.chart?.clear();
+      this.render();
+    } else
+      this.chart?.dispatchAction({
+        type: "treemapRootToNode",
+        seriesId: "market-heat",
+        targetNodeId: id,
+      });
+    this.chart?.dispatchAction({ type: "hideTip" });
+    this.cdr.markForCheck();
+  }
+  private updateBreadcrumbs() {
+    const root = [{ id: "", name: "Mercado" }];
+    for (const sector of this.heatTree) {
+      if (sector.id === this.rootId) {
+        this.breadcrumbs = [...root, { id: sector.id, name: sector.name }];
+        return;
+      }
+      for (const industry of sector.children || [])
+        if (industry.id === this.rootId) {
+          this.breadcrumbs = [
+            ...root,
+            { id: sector.id, name: sector.name },
+            { id: industry.id, name: industry.name },
+          ];
+          return;
+        }
+    }
+    this.rootId = "";
+    this.breadcrumbs = root;
+  }
   render() {
     if (!this.chart) return;
+    const signature = JSON.stringify([
+      this.kind,
+      this.theme,
+      this.sizeMetric,
+      this.assets.map((a) => [
+        a.symbol,
+        a.sector,
+        a.industry,
+        this.quotes[a.symbol],
+      ]),
+      this.macroValues,
+    ]);
+    if (signature === this.signature) return;
+    this.signature = signature;
     const fg = this.theme === "dark" ? "#a5afbf" : "#475267";
-    if (this.kind === "map" || this.kind === "macro") {
-      const data = Object.entries(countryNames).map(([name, country]) => {
-        const assets = this.assets.filter(
-          (a) => a.country === country && a.type === "Índices",
-        );
-        const q = assets.map((a) => this.quotes[a.symbol]).find(Boolean);
-        const m = this.macroValues.find((m) => m.country === country);
-        return {
-          name,
-          value: this.kind === "macro" ? (m?.value ?? undefined) : q?.change,
-          year: m?.year,
-        };
-      });
-      this.chart.setOption(
-        {
-          animation: false,
-          tooltip: {
-            trigger: "item",
-            formatter: (p: any) =>
-              `${countryNames[p.name] ?? p.name}: ${Number.isFinite(p.value) ? p.value.toFixed(2) + " %" + (p.data?.year ? " · " + p.data.year : "") : "sin datos"}`,
-            backgroundColor: "#202631",
-            borderWidth: 0,
-            textStyle: { color: "#e5e9f0" },
-          },
-          visualMap: {
-            min:
-              this.kind === "macro"
-                ? Math.min(0, ...this.macroValues.map((m) => m.value ?? 0))
-                : -3,
-            max:
-              this.kind === "macro"
-                ? Math.max(1, ...this.macroValues.map((m) => m.value ?? 0))
-                : 3,
-            show: false,
-            inRange: {
-              color:
-                this.kind === "macro"
-                  ? ["#5679bd", "#9595aa", "#e1ae65"]
-                  : ["#cb5367", "#333b48", "#27977d"],
-            },
-          },
-          series: [
-            {
-              type: "map",
-              map: "world",
-              roam: true,
-              zoom: 1.15,
-              scaleLimit: { min: 1, max: 8 },
-              nameProperty: "name",
-              data,
-              itemStyle: {
-                areaColor: this.theme === "dark" ? "#252d39" : "#dce2ec",
-                borderColor: this.theme === "dark" ? "#101318" : "#f6f7fb",
-                borderWidth: 1,
-              },
-              emphasis: {
-                label: { show: true, color: fg, fontSize: 10 },
-                itemStyle: { areaColor: "#7f93bc" },
-              },
-              label: { show: false },
-              left: 10,
-              right: 10,
-              top: 10,
-              bottom: 10,
-            },
-          ],
-        },
-        true,
-      );
-      return;
+    const universeKey = this.assets.map((a) => a.symbol).join("|");
+    if (universeKey !== this.universeKey) {
+      this.rootId = "";
+      this.roamRect = undefined;
+      this.universeKey = universeKey;
     }
-    const assets = this.assets.filter((a) => this.quotes[a.symbol]);
+    const tree = heatmapTree(this.assets, this.quotes, this.sizeMetric);
+    this.heatTree = tree;
+    const rootBefore = this.rootId;
+    this.updateBreadcrumbs();
+    if (rootBefore !== this.rootId) this.roamRect = undefined;
     this.chart.setOption(
       {
         animation: false,
         tooltip: {
-          formatter: (p: any) =>
-            `${p.data.name}: ${p.data.change.toFixed(2)} %`,
+          confine: true,
+          renderMode: "richText",
           backgroundColor: "#202631",
           borderWidth: 0,
-          textStyle: { color: "#e5e9f0" },
+          textStyle: { color: "#e5e9f0", fontSize: 12 },
+          formatter: (p: any) =>
+            p.data?.symbol
+              ? `${p.data.fullName} · ${p.data.name}\n${p.data.price.toLocaleString("es-ES", { maximumFractionDigits: 4 })} ${p.data.currency}   ${p.data.change >= 0 ? "+" : ""}${p.data.change.toFixed(2)} %\n${p.data.source}\n${new Date(p.data.asOf).toLocaleString("es-ES")}`
+              : `${p.name}\n${p.data?.count ?? 0} activos · Clic para ampliar`,
         },
         series: [
           {
+            id: "market-heat",
             type: "treemap",
-            roam: false,
+            name: "Mercado",
+            roam: true,
             nodeClick: false,
-            breadcrumb: { show: false },
-            left: 0,
-            top: 0,
-            right: 0,
-            bottom: 0,
+            animationDuration: 0,
+            animationDurationUpdate: 0,
+            left: 3,
+            right: 3,
+            top: 3,
+            bottom: 3,
+            leafDepth: 3,
+            visibleMin: 200,
+            childrenVisibleMin: 1000,
+            breadcrumb: {
+              show: false,
+              height: 22,
+              bottom: 3,
+              itemStyle: {
+                color: this.theme === "dark" ? "#252d39" : "#e8edf4",
+                borderColor: this.theme === "dark" ? "#101318" : "#fff",
+                textStyle: { color: fg, fontSize: 10 },
+              },
+            },
             label: {
               show: true,
               color: "#fff",
-              fontFamily: "Segoe UI",
-              fontSize: 13,
+              fontFamily: "DM Sans",
+              fontSize: 14,
               formatter: (p: any) =>
-                `${p.data.name}\n${p.data.change >= 0 ? "+" : ""}${p.data.change.toFixed(2)} %`,
+                p.data?.symbol
+                  ? `{symbol|${p.data.name}}\n{change|${p.data.change >= 0 ? "+" : ""}${p.data.change.toFixed(2)} %}\n{price|${p.data.price.toLocaleString("es-ES", { maximumFractionDigits: 2 })}}`
+                  : p.name,
+              rich: {
+                symbol: { fontSize: 16, fontWeight: 600, lineHeight: 23 },
+                change: { fontSize: 12, lineHeight: 21 },
+                price: { fontSize: 10, color: "#ffffffb0", lineHeight: 18 },
+              },
+            },
+            upperLabel: {
+              show: true,
+              height: 25,
+              color: fg,
+              fontSize: 11,
+              padding: [0, 8],
             },
             itemStyle: {
-              borderColor: this.theme === "dark" ? "#101318" : "#f6f7fb",
+              borderColor: this.theme === "dark" ? "#12171e" : "#edf1f6",
               borderWidth: 2,
               gapWidth: 2,
             },
-            data: assets.map((a) => {
-              const q = this.quotes[a.symbol];
-              return {
-                name: a.symbol,
-                symbol: a.symbol,
-                value: a.weight,
-                change: q.change,
+            levels: [
+              { itemStyle: { borderWidth: 0, gapWidth: 3 } },
+              {
                 itemStyle: {
-                  color:
-                    q.change >= 0
-                      ? `rgb(30,${Math.min(145, 75 + Math.abs(q.change) * 30)},108)`
-                      : `rgb(${Math.min(180, 105 + Math.abs(q.change) * 30)},55,72)`,
+                  borderColor: this.theme === "dark" ? "#252d39" : "#dce3ed",
+                  borderWidth: 0,
+                  gapWidth: 2,
                 },
-              };
-            }),
+                upperLabel: { show: true },
+              },
+              {
+                itemStyle: { borderWidth: 0, gapWidth: 1 },
+                upperLabel: { show: true, height: 19, fontSize: 9 },
+                label: { show: true },
+              },
+              {
+                itemStyle: { borderWidth: 0, gapWidth: 1 },
+                upperLabel: { show: false },
+              },
+            ],
+            data: tree,
           },
         ],
       },
-      true,
+      false,
     );
+    if (this.rootId)
+      this.chart.dispatchAction({
+        type: "treemapRootToNode",
+        seriesId: "market-heat",
+        targetNodeId: this.rootId,
+      });
+    if (this.roamRect) {
+      this.restoring = true;
+      try {
+        this.chart.dispatchAction({
+          type: "treemapRender",
+          seriesId: "market-heat",
+          rootRect: { ...this.roamRect },
+        });
+      } finally {
+        this.restoring = false;
+      }
+    }
   }
 }

@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: trader
+    runtime: docker
+    branch: main
+    plan: free
+    region: frankfurt
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: TRADER_ORIGINS
+        value: https://alejandropico.github.io
+      - key: TRADER_FIREBASE_CONFIG
+        sync: false

@@ -23,9 +23,9 @@ import {
   COUNTRIES,
   Quote,
   Series,
-  demoSeries,
   quoteFrom,
   fetchSeries,
+  fetchQuote,
   requestJson,
 } from "./market";
 import {
@@ -36,11 +36,14 @@ import {
   fresh,
   validateState,
   Drawing,
+  VIEW_DEFAULTS,
 } from "./state";
-import { Cloud } from "./cloud";
+import { Cloud } from "./account";
 import { DialogFocus } from "./dialog";
 import { desktopApi } from "./desktop-client";
 import { ResearchPanel } from "./research";
+import { WORLD_COUNTRIES } from "./geography";
+import { CryptoStream } from "./crypto-stream";
 @Component({
   selector: "trader-app",
   standalone: true,
@@ -57,11 +60,12 @@ import { ResearchPanel } from "./research";
 })
 export class AppComponent implements OnDestroy {
   private cdr = inject(ChangeDetectorRef);
-  private syncToken =
-    new URLSearchParams(location.search).get("desktop-sync") ?? "";
+  private loginToken =
+    new URLSearchParams(location.search).get("desktop-login") ?? "";
+  loginWindow = !!this.loginToken;
+  loginDone = false;
   private windowId =
-    new URLSearchParams(location.search).get("workspace") ??
-    (this.syncToken ? "browser-sync-" + crypto.randomUUID() : "principal");
+    new URLSearchParams(location.search).get("workspace") ?? "principal";
   private storageKey =
     "trader.workspace.v1" +
     (this.windowId === "principal" ? "" : ":" + this.windowId);
@@ -72,12 +76,27 @@ export class AppComponent implements OnDestroy {
   series?: Series;
   comparison: Candle[] = [];
   loading = false;
+  refreshing = false;
   error = "";
   toast = "";
   searchOpen = false;
   search = "";
   remoteResults: Asset[] = [];
   settings = false;
+  about = false;
+  accountOpen = false;
+  profileName = "";
+  marketView: "table" | "map" = "table";
+  heatUniverse = "Acciones";
+  heatSize: "uniform" | "volume" = "uniform";
+  quoteErrors: Record<string, string> = {};
+  private seriesKey = "";
+  private previousUser = "";
+  private classifications: Record<
+    string,
+    { sector?: string; industry?: string }
+  > = {};
+  private classificationBusy = false;
   indicatorPanel = false;
   mobileMenu = false;
   tool = "cursor";
@@ -93,29 +112,31 @@ export class AppComponent implements OnDestroy {
   sortDir = 1;
   searchBusy = false;
   DateNow = Date.now();
-  countries = COUNTRIES;
+  countries = [...new Set([...WORLD_COUNTRIES, ...COUNTRIES])].sort((a, b) =>
+    a.localeCompare(b, "es"),
+  );
   types = ["Todos", "Acciones", "Índices", "Cripto", "Divisas", "Futuros"];
   indicators = ["SMA 20", "EMA 50", "Bollinger", "RSI 14"];
   cloud = new Cloud();
-  cloudBusy = false;
-  apiDraft = "";
-  clientDraft = "";
   storageWarning = "";
   positionSymbol = "AAPL";
   quantity = 1;
-  cost = 100;
+  cost: number | null = null;
   alertSymbol = "AAPL";
-  alertPrice = 250;
+  alertPrice: number | null = null;
   alertDirection = "above";
   portfolioCurrency = "USD";
   importData?: Series;
   private cache = new Map<string, Series>();
   private pending = new Map<string, Promise<Series>>();
+  private quotePending = new Map<string, Promise<Quote>>();
+  private cryptoStream = new CryptoStream(
+    (symbol, interval, candle, timestamp) =>
+      this.receiveCrypto(symbol, interval, candle, timestamp),
+  );
   private csvSessions = new Map<string, Series>();
   private dataVersion = 0;
   private syncTimer?: ReturnType<typeof setInterval>;
-  desktopSync = false;
-  desktopSyncDone = false;
   nativeSyncBusy = false;
   get nativeDesktop() {
     return !!desktopApi();
@@ -125,6 +146,7 @@ export class AppComponent implements OnDestroy {
   private searchTimer?: ReturnType<typeof setTimeout>;
   private toastTimer?: ReturnType<typeof setTimeout>;
   private refreshBusy = false;
+  private refreshAgain = false;
   private onKey = (e: KeyboardEvent) => this.key(e);
   private installPrompt: any;
   nav: { view: View; label: string; icon: string }[] = [
@@ -148,21 +170,29 @@ export class AppComponent implements OnDestroy {
       this.storageWarning =
         "No se pudo recuperar el espacio guardado. Puedes importar una copia.";
     }
+    this.restorePreferences();
+    this.save(false);
     this.applyTheme();
-    this.seedQuotes();
-    if (this.syncToken) void this.restoreDesktopSync();
+    if (this.loginWindow) history.replaceState(null, "", location.pathname);
     else {
       void this.load();
       void this.refreshQuotes();
+      if (this.active.view === "heatmap") void this.loadClassifications();
     }
+    this.cloud.initialize(
+      () => this.ws,
+      (workspace) => this.receiveWorkspace(workspace),
+      () => this.accountChanged(),
+      this.loginWindow,
+    );
     document.addEventListener("keydown", this.onKey);
     window.addEventListener("beforeinstallprompt", this.installListener);
     this.poll = setInterval(() => {
-      if (this.ws.mode === "live" && !document.hidden) {
+      if (!this.loginWindow && !document.hidden) {
         void this.refreshQuotes();
         void this.load(true);
       }
-    }, 60000);
+    }, 30000);
   }
   private installListener = (e: Event) => {
     e.preventDefault();
@@ -170,6 +200,8 @@ export class AppComponent implements OnDestroy {
   };
   ngOnDestroy() {
     clearInterval(this.syncTimer);
+    this.cloud.destroy();
+    this.cryptoStream.close();
     clearInterval(this.poll);
     clearTimeout(this.searchTimer);
     clearTimeout(this.toastTimer);
@@ -182,7 +214,7 @@ export class AppComponent implements OnDestroy {
       ...this.ws.customAssets.filter(
         (a) => !ASSETS.some((b) => b.symbol === a.symbol),
       ),
-    ];
+    ].map((asset) => ({ ...asset, ...this.classifications[asset.symbol] }));
   }
   get active(): Tab {
     return this.ws.tabs.find((t) => t.id === this.ws.active) ?? this.ws.tabs[0];
@@ -200,7 +232,18 @@ export class AppComponent implements OnDestroy {
     return ["^GSPC", "^IBEX", "^GDAXI", "^N225"].map((s) => this.assetFor(s));
   }
   get heatAssets() {
-    return this.filteredAssets.filter((a) => a.type === "Acciones");
+    return this.assets.filter(
+      (a) =>
+        a.type === this.heatUniverse &&
+        (this.country === "Todos" || this.country === a.country),
+    );
+  }
+  get heatQuoteCount() {
+    return this.heatAssets.filter(
+      (a) =>
+        this.quotes[a.symbol] &&
+        (this.heatSize !== "volume" || (this.quotes[a.symbol].volume ?? 0) > 0),
+    ).length;
   }
   get filteredAssets() {
     return this.assets
@@ -213,13 +256,16 @@ export class AppComponent implements OnDestroy {
             (a.symbol + " " + a.name)
               .toLowerCase()
               .includes(this.tableQuery.toLowerCase())) &&
-          (this.minChange == null || this.minChange === "" ||
+          (this.minChange == null ||
+            this.minChange === "" ||
             (this.quotes[a.symbol]?.change ?? -Infinity) >=
               Number(this.minChange)) &&
-          (this.maxChange == null || this.maxChange === "" ||
+          (this.maxChange == null ||
+            this.maxChange === "" ||
             (this.quotes[a.symbol]?.change ?? Infinity) <=
               Number(this.maxChange)) &&
-          (this.minPrice == null || this.minPrice === "" ||
+          (this.minPrice == null ||
+            this.minPrice === "" ||
             (this.quotes[a.symbol]?.price ?? -Infinity) >=
               Number(this.minPrice)),
       )
@@ -265,7 +311,14 @@ export class AppComponent implements OnDestroy {
     ];
   }
   get currentQuote() {
-    return this.series?.candles.length ? quoteFrom(this.series) : undefined;
+    if (this.active.symbol === "CSV") {
+      try {
+        return this.series ? quoteFrom(this.series) : undefined;
+      } catch {
+        return undefined;
+      }
+    }
+    return this.quotes[this.active.symbol];
   }
   get lastCandle() {
     return this.series?.candles.at(-1);
@@ -277,10 +330,12 @@ export class AppComponent implements OnDestroy {
   get rangeHigh() {
     return this.series
       ? Math.max(...this.series.candles.map((c) => c.high))
-      : 0;
+      : undefined;
   }
   get rangeLow() {
-    return this.series ? Math.min(...this.series.candles.map((c) => c.low)) : 0;
+    return this.series
+      ? Math.min(...this.series.candles.map((c) => c.low))
+      : undefined;
   }
   get breadth() {
     const q = this.filteredAssets
@@ -335,11 +390,15 @@ export class AppComponent implements OnDestroy {
     this.active.zoom = zoom;
     this.save();
   }
-  refreshCurrent() {
-    if (this.research) void this.research.load();
-    else {
-      void this.load();
-      void this.refreshQuotes();
+  async refreshCurrent() {
+    if (this.refreshing) return;
+    this.refreshing = true;
+    try {
+      if (this.research) await this.research.load();
+      else await Promise.all([this.load(true), this.refreshQuotes(true)]);
+    } finally {
+      this.refreshing = false;
+      this.cdr.markForCheck();
     }
   }
   assetFor(symbol: string): Asset {
@@ -353,8 +412,6 @@ export class AppComponent implements OnDestroy {
         type: "Importado",
         currency: "—",
         sector: "Importado",
-        seed: 100,
-        weight: 10,
       }
     );
   }
@@ -376,8 +433,8 @@ export class AppComponent implements OnDestroy {
       ? "—"
       : (value >= 0 ? "+" : "") + this.n(value, 2) + " %";
   }
-  compact(value: number | undefined) {
-    return value === undefined
+  compact(value: number | null | undefined) {
+    return value == null
       ? "—"
       : new Intl.NumberFormat("es", {
           notation: "compact",
@@ -391,37 +448,36 @@ export class AppComponent implements OnDestroy {
           month: "short",
           hour: "2-digit",
           minute: "2-digit",
+          second: "2-digit",
         })
       : "Sin datos";
   }
-  spark(symbol: string) {
-    const s = demoSeries(this.assetFor(symbol))
-      .candles.slice(-28)
-      .map((c) => c.close);
-    const low = Math.min(...s),
-      span = Math.max(...s) - low || 1;
-    return s
-      .map((p, i) => `${i * 3},${27 - ((p - low) / span) * 24}`)
-      .join(" ");
-  }
-  save() {
+  save(sync = true) {
     try {
-      localStorage.setItem(this.storageKey, JSON.stringify(this.ws));
+      this.ws.preferences = Object.fromEntries(
+        Object.keys(VIEW_DEFAULTS).map((key) => [key, (this as any)[key]]),
+      );
+      localStorage.setItem(this.localKey, JSON.stringify(this.ws));
+      if (sync) this.cloud.schedule(this.ws);
     } catch {
       this.storageWarning =
         "El navegador no permite guardar cambios. Exporta una copia del espacio.";
     }
   }
-  private seedQuotes() {
-    this.quotes =
-      this.ws.mode === "demo"
-        ? Object.fromEntries(
-            this.assets.map((a) => [a.symbol, quoteFrom(demoSeries(a))]),
-          )
-        : {};
-  }
   applyTheme() {
     document.documentElement.dataset["theme"] = this.ws.theme;
+  }
+  private restorePreferences() {
+    Object.assign(this, VIEW_DEFAULTS, this.ws.preferences || {});
+  }
+  saveView() {
+    this.save();
+    void this.refreshQuotes();
+  }
+  quoteInfo(symbol: string) {
+    const quote = this.quotes[symbol];
+    if (!quote) return this.quoteErrors[symbol] || "Cotización no recibida";
+    return `${this.quoteErrors[symbol] ? "No se ha podido actualizar. " : ""}${quote.source} · ${new Date(quote.asOf).toLocaleString("es-ES")} · ${quote.delay == null ? "Retraso no comunicado" : "Retraso: " + quote.delay + " min"}`;
   }
   toggleTheme() {
     this.ws.theme = this.ws.theme === "dark" ? "light" : "dark";
@@ -460,6 +516,7 @@ export class AppComponent implements OnDestroy {
     this.importData = undefined;
     this.save();
     void this.load();
+    if (tab.view === "heatmap") void this.loadClassifications();
   }
   closeTab(tab: Tab, event: Event) {
     event.stopPropagation();
@@ -476,7 +533,9 @@ export class AppComponent implements OnDestroy {
   choose(asset: Asset) {
     if (!this.assets.some((a) => a.symbol === asset.symbol)) {
       this.ws.customAssets.push(asset);
-      this.countries = [...new Set(this.assets.map((a) => a.country))];
+      this.countries = [
+        ...new Set([...WORLD_COUNTRIES, ...this.assets.map((a) => a.country)]),
+      ].sort((a, b) => a.localeCompare(b, "es"));
     }
     this.searchOpen = false;
     this.search = "";
@@ -497,23 +556,34 @@ export class AppComponent implements OnDestroy {
     if (!this.assets.some((a) => a.symbol === asset.symbol))
       this.ws.customAssets.push(asset);
     this.toggleWatch(asset.symbol, event);
-    if (this.ws.mode === "demo")
-      this.quotes = {
-        ...this.quotes,
-        [asset.symbol]: quoteFrom(demoSeries(asset)),
-      };
-    else void this.refreshQuotes();
+    void this.refreshQuotes();
   }
   async load(quiet = false) {
     const id = ++this.request;
+    this.cryptoStream.subscribe(this.assets, this.asset, this.active.interval);
     if (!["chart", "overview"].includes(this.active.view)) return;
     const tab = { ...this.active };
-    if (!quiet) {
-      this.loading = true;
-      this.error = "";
+    if (tab.symbol !== "CSV")
+      void this.getQuote(this.assetFor(tab.symbol))
+        .then((quote) => {
+          this.quotes = { ...this.quotes, [tab.symbol]: quote };
+          this.cdr.markForCheck();
+        })
+        .catch(() => {});
+    const key =
+      (tab.symbol === "CSV" ? tab.id : tab.symbol) +
+      ":" +
+      tab.interval +
+      ":" +
+      tab.compare;
+    const retain = this.seriesKey === key;
+    if (!retain) {
       this.series = undefined;
       this.comparison = [];
+      this.measurement = "";
     }
+    if (!quiet) this.loading = true;
+    this.error = "";
     try {
       const local = this.csvSessions.get(tab.id);
       if (tab.symbol === "CSV" && !local)
@@ -547,6 +617,7 @@ export class AppComponent implements OnDestroy {
       }
       if (id !== this.request) return;
       this.series = series;
+      this.seriesKey = key;
       this.comparison = comparison;
       if (tab.symbol !== "CSV" && tab.interval === "1d")
         this.quotes = { ...this.quotes, [tab.symbol]: quoteFrom(series) };
@@ -564,7 +635,6 @@ export class AppComponent implements OnDestroy {
     interval: string,
     refresh = false,
   ): Promise<Series> {
-    if (this.ws.mode === "demo") return demoSeries(asset, interval);
     const key = this.ws.api + asset.symbol + interval;
     const cached = this.cache.get(key);
     if (cached && !refresh && Date.now() - (cached.fetchedAt ?? 0) < 60000)
@@ -583,17 +653,27 @@ export class AppComponent implements OnDestroy {
     this.pending.set(key, task);
     return task;
   }
-  async refreshQuotes() {
-    if (this.ws.mode === "demo" || this.refreshBusy) return;
+  async refreshQuotes(force = false) {
+    if (this.refreshBusy) {
+      this.refreshAgain = true;
+      return;
+    }
     this.refreshBusy = true;
-    const mode = this.ws.mode;
     const version = this.dataVersion;
     const symbols = [
       ...new Set([
+        ...(this.active.symbol === "CSV" ? [] : [this.active.symbol]),
         ...this.ws.watchlist,
         ...this.ws.positions.map((p) => p.symbol),
         ...this.ws.alerts.map((a) => a.symbol),
-        ...this.filteredAssets.slice(0, 60).map((a) => a.symbol),
+        ...(["markets", "screener"].includes(this.active.view)
+          ? this.filteredAssets.slice(0, 60)
+          : this.active.view === "heatmap"
+            ? this.heatAssets
+            : this.active.view === "overview"
+              ? this.featured
+              : []
+        ).map((a) => a.symbol),
       ]),
     ];
     let i = 0;
@@ -601,75 +681,189 @@ export class AppComponent implements OnDestroy {
     try {
       await Promise.all(
         Array.from({ length: 4 }, async () => {
-          while (
-            i < symbols.length &&
-            this.ws.mode === mode &&
-            version === this.dataVersion
-          ) {
+          while (i < symbols.length && version === this.dataVersion) {
             const s = symbols[i++];
             try {
-              const data = await this.getSeries(this.assetFor(s), "1d");
-              if (this.ws.mode !== mode || version !== this.dataVersion) return;
-              this.quotes = { ...this.quotes, [s]: quoteFrom(data) };
+              const quote = await this.getQuote(this.assetFor(s), force);
+              if (version !== this.dataVersion) return;
+              this.quotes = { ...this.quotes, [s]: quote };
+              delete this.quoteErrors[s];
               this.cdr.markForCheck();
             } catch (e) {
               errors.push(this.message(e));
+              this.quoteErrors[s] = this.message(e);
             }
           }
         }),
       );
-      if (errors.length && Object.keys(this.quotes).length === 0)
-        this.notify(
-          "No hay conexión con los proveedores. Revisa Ajustes → Servidor de datos.",
-        );
       this.checkAlerts();
+      this.cdr.markForCheck();
     } finally {
       this.refreshBusy = false;
-      if (version !== this.dataVersion) void this.refreshQuotes();
+      if (this.refreshAgain || version !== this.dataVersion) {
+        this.refreshAgain = false;
+        void this.refreshQuotes();
+      }
     }
   }
-  switchMode(mode: "demo" | "live") {
-    this.dataVersion++;
-    this.pending.clear();
-    this.ws.mode = mode;
-    this.cache.clear();
-    this.importData = undefined;
-    this.seedQuotes();
+  configure() {
+    this.mobileMenu = false;
+    this.settings = true;
+    this.accountOpen = false;
+  }
+  private getQuote(asset: Asset, force = false): Promise<Quote> {
+    const cached = this.quotes[asset.symbol];
+    if (!force && cached && Date.now() - (cached.fetchedAt ?? 0) < 30000)
+      return Promise.resolve(cached);
+    const pending = this.quotePending.get(asset.symbol);
+    if (pending) return pending;
+    const task = fetchQuote(asset, this.ws.api).finally(() =>
+      this.quotePending.delete(asset.symbol),
+    );
+    this.quotePending.set(asset.symbol, task);
+    return task;
+  }
+  private receiveCrypto(
+    symbol: string,
+    interval: string,
+    candle: Candle,
+    timestamp: number,
+  ) {
+    const quote = this.quotes[symbol];
+    if (interval === "1d" && quote) {
+      if (quote.periodStart !== candle.time) {
+        void this.getQuote(this.assetFor(symbol), true)
+          .then((value) => {
+            this.quotes = { ...this.quotes, [symbol]: value };
+            this.cdr.markForCheck();
+          })
+          .catch(() => {});
+      } else if (quote.referenceClose && timestamp >= quote.asOf) {
+        this.quotes = {
+          ...this.quotes,
+          [symbol]: {
+            ...quote,
+            price: candle.close,
+            change: (candle.close / quote.referenceClose - 1) * 100,
+            volume: candle.volume,
+            asOf: timestamp,
+            timeKind: "market",
+            fetchedAt: Date.now(),
+          },
+        };
+      }
+    }
+    if (
+      this.series &&
+      this.active.symbol === symbol &&
+      this.active.interval === interval
+    ) {
+      const candles = [...this.series.candles],
+        last = candles.at(-1)!;
+      if (candle.time < last.time || timestamp < this.series.asOf) return;
+      if (candle.time === last.time) candles[candles.length - 1] = candle;
+      else candles.push(candle);
+      this.series = {
+        ...this.series,
+        candles: candles.slice(-500),
+        asOf: timestamp,
+        timeKind: "market",
+        fetchedAt: Date.now(),
+      };
+      this.cache.set(this.ws.api + symbol + interval, this.series);
+    }
+    delete this.quoteErrors[symbol];
+    this.checkAlerts();
+    this.cdr.markForCheck();
+  }
+  navigate(view: View) {
+    this.active.view = view;
+    this.mobileMenu = false;
     this.save();
     void this.load();
     void this.refreshQuotes();
+    if (view === "heatmap") void this.loadClassifications();
   }
-  configure() {
-    this.apiDraft = this.ws.api;
-    this.clientDraft = this.ws.googleClient;
-    this.settings = true;
-    if (this.ws.googleClient && !this.nativeDesktop)
-      void this.cloud.prepare().catch(() => {});
-  }
-  saveSettings() {
+  private async loadClassifications() {
+    if (!this.ws.api || this.classificationBusy) return;
+    this.classificationBusy = true;
+    const labels: Record<string, string> = {
+      Technology: "Tecnología",
+      "Communication Services": "Comunicaciones",
+      "Consumer Cyclical": "Consumo cíclico",
+      "Consumer Defensive": "Consumo básico",
+      "Financial Services": "Finanzas",
+      Healthcare: "Salud",
+      Industrials: "Industria",
+      "Basic Materials": "Materiales",
+      "Real Estate": "Inmobiliario",
+      Utilities: "Servicios públicos",
+      Energy: "Energía",
+    };
+    const industries: Record<string, string> = {
+      "Consumer Electronics": "Electrónica de consumo",
+      "Software - Infrastructure": "Software de infraestructura",
+      "Software - Application": "Aplicaciones de software",
+      Semiconductors: "Semiconductores",
+      "Internet Content & Information": "Contenidos y servicios de Internet",
+      "Internet Retail": "Comercio por Internet",
+      "Banks - Diversified": "Banca diversificada",
+      "Credit Services": "Servicios de crédito",
+      "Oil & Gas Integrated": "Petróleo y gas",
+      "Drug Manufacturers - General": "Farmacéuticas",
+      "Auto Manufacturers": "Automóviles",
+      "Telecom Services": "Telecomunicaciones",
+      "Apparel Retail": "Comercio textil",
+      "Luxury Goods": "Artículos de lujo",
+      "Beverages - Wineries & Distilleries": "Vinos y destilados",
+      "Utilities - Diversified": "Servicios públicos diversificados",
+      "Aerospace & Defense": "Aeronáutica y defensa",
+      "Oil & Gas Refining & Marketing": "Refino y comercialización",
+    };
+    const assets = this.assets.filter(
+      (a) => a.type === "Acciones" && !this.classifications[a.symbol],
+    );
+    const result = { ...this.classifications };
+    let i = 0;
     try {
-      const candidate = {
-        ...this.ws,
-        api: this.apiDraft.replace(/\/$/, ""),
-        googleClient: this.clientDraft.trim(),
-      };
-      this.ws = validateState(candidate);
-      this.dataVersion++;
-      this.pending.clear();
-      this.save();
-      this.settings = false;
-      this.cache.clear();
-      this.notify("Ajustes guardados");
-      if (this.ws.googleClient && !this.nativeDesktop)
-        void this.cloud.prepare().catch(() => {});
-      void this.load();
-      void this.refreshQuotes();
-    } catch (e) {
-      this.notify(this.message(e));
+      await Promise.all(
+        Array.from({ length: 4 }, async () => {
+          while (i < assets.length) {
+            const asset = assets[i++];
+            try {
+              const value = await requestJson(
+                `${this.ws.api}/api/classification?symbol=${encodeURIComponent(asset.symbol)}`,
+              );
+              result[asset.symbol] = {
+                ...(value.sector
+                  ? { sector: labels[value.sector] || value.sector }
+                  : {}),
+                ...(value.industry
+                  ? {
+                      industry:
+                        industries[
+                          String(value.industry).replace(/\s*[—–-]\s*/g, " - ")
+                        ] || value.industry,
+                    }
+                  : {}),
+              };
+            } catch {
+              /* Missing provider classifications remain explicitly unnamed. */
+            }
+          }
+        }),
+      );
+      this.classifications = result;
+    } finally {
+      this.classificationBusy = false;
+      this.cdr.markForCheck();
     }
   }
   changeChart() {
     this.importData = undefined;
+    this.ws.tabs = this.ws.tabs.map((tab) =>
+      tab.id === this.ws.active ? { ...tab } : tab,
+    );
     this.save();
     void this.load();
   }
@@ -700,20 +894,22 @@ export class AppComponent implements OnDestroy {
   sort(key: string) {
     this.sortDir = this.sortKey === key ? -this.sortDir : 1;
     this.sortKey = key;
+    this.saveView();
   }
   selectCountry(country: string) {
     if (!country) return;
     this.country = country;
-    this.open("markets");
+    this.navigate("markets");
   }
   resetFilters() {
     this.country = this.category = this.sector = "Todos";
     this.minChange = this.maxChange = this.minPrice = this.tableQuery = "";
+    this.saveView();
   }
   onSearch() {
     clearTimeout(this.searchTimer);
     this.remoteResults = [];
-    if (this.ws.mode !== "live" || this.search.length < 2) return;
+    if (this.search.length < 2 || !this.ws.api) return;
     const query = this.search;
     this.searchTimer = setTimeout(async () => {
       this.searchBusy = true;
@@ -730,11 +926,19 @@ export class AppComponent implements OnDestroy {
     }, 400);
   }
   private key(e: KeyboardEvent) {
+    if (this.loginWindow) return;
     if (e.key === "Escape") {
-      this.searchOpen = this.settings = this.indicatorPanel = false;
+      this.searchOpen =
+        this.settings =
+        this.indicatorPanel =
+        this.about =
+        this.accountOpen =
+        this.mobileMenu =
+          false;
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
       e.preventDefault();
+      this.settings = this.about = this.accountOpen = this.mobileMenu = false;
       this.searchOpen = true;
     }
     this.cdr.markForCheck();
@@ -762,11 +966,12 @@ export class AppComponent implements OnDestroy {
     try {
       if (file.size > 10000000) throw new Error("El archivo supera 10 MB.");
       this.ws = validateState(JSON.parse(await file.text()));
+      this.restorePreferences();
       this.dataVersion++;
       this.pending.clear();
       this.save();
       this.applyTheme();
-      this.seedQuotes();
+      this.quotes = {};
       this.cache.clear();
       this.importData = undefined;
       this.settings = false;
@@ -800,7 +1005,6 @@ export class AppComponent implements OnDestroy {
         candles,
         source: "Archivo local · " + file.name,
         asOf: candles.at(-1)!.time,
-        demo: false,
       };
       this.series = this.importData;
       this.measurement = "";
@@ -873,6 +1077,7 @@ export class AppComponent implements OnDestroy {
     if (
       !Number.isFinite(this.quantity) ||
       this.quantity <= 0 ||
+      this.cost == null ||
       !Number.isFinite(this.cost) ||
       this.cost <= 0
     ) {
@@ -895,7 +1100,11 @@ export class AppComponent implements OnDestroy {
     this.save();
   }
   addAlert() {
-    if (!Number.isFinite(this.alertPrice) || this.alertPrice <= 0) {
+    if (
+      this.alertPrice == null ||
+      !Number.isFinite(this.alertPrice) ||
+      this.alertPrice <= 0
+    ) {
       this.notify("Introduce un precio mayor que cero.");
       return;
     }
@@ -919,7 +1128,6 @@ export class AppComponent implements OnDestroy {
     this.save();
   }
   checkAlerts() {
-    if (this.ws.mode !== "live") return;
     let changed = false;
     for (const a of this.ws.alerts) {
       const q = this.quotes[a.symbol];
@@ -948,60 +1156,92 @@ export class AppComponent implements OnDestroy {
       );
     }
   }
-  async connect() {
-    if (!this.ws.googleClient) {
-      this.configure();
-      return;
-    }
-    if (this.nativeDesktop) {
-      await this.syncWithBrowser();
-      return;
-    }
-    this.cloudBusy = true;
-    try {
-      await this.cloud.connect(this.ws.googleClient);
-      this.notify("Cuenta conectada. Puedes guardar o recuperar tu espacio.");
-    } catch (e) {
-      this.notify(this.message(e));
-    } finally {
-      this.cloudBusy = false;
-      this.cdr.markForCheck();
-    }
+  get localKey() {
+    return this.cloud.user
+      ? `trader.account.${this.cloud.user.uid}.${this.cloud.profile}.${this.windowId}`
+      : this.storageKey;
   }
-  async cloudSave() {
-    this.cloudBusy = true;
-    try {
-      await this.cloud.save(this.ws);
-      this.notify("Espacio guardado en tu cuenta de Google");
-    } catch (e) {
-      this.notify(this.message(e));
-    } finally {
-      this.cloudBusy = false;
-      this.cdr.markForCheck();
-    }
+  private receiveWorkspace(workspace: Workspace) {
+    const before = this.active.symbol + this.active.interval + this.active.view;
+    this.ws = validateState(workspace);
+    this.restorePreferences();
+    this.applyTheme();
+    this.save(false);
+    if (before !== this.active.symbol + this.active.interval + this.active.view)
+      void this.load();
+    void this.refreshQuotes();
+    this.cdr.markForCheck();
+    if (this.active.view === "heatmap") void this.loadClassifications();
   }
-  async cloudLoad() {
-    this.cloudBusy = true;
-    try {
-      const cloud = await this.cloud.load();
-      const { api, googleClient } = this.ws;
-      this.ws = { ...cloud, api, googleClient };
-      this.dataVersion++;
-      this.pending.clear();
-      this.save();
+  private accountChanged() {
+    if (!this.cloud.user && this.previousUser) {
+      try {
+        this.ws = validateState(
+          JSON.parse(localStorage.getItem(this.storageKey) || "null"),
+        );
+      } catch {
+        this.ws = fresh();
+      }
+      this.restorePreferences();
       this.applyTheme();
-      this.seedQuotes();
-      this.cache.clear();
-      this.importData = undefined;
-      await this.load();
+      void this.load();
       void this.refreshQuotes();
-      this.notify("Espacio recuperado de Google");
-    } catch (e) {
-      this.notify(this.message(e));
+    }
+    if (this.cloud.user && this.cloud.user.uid !== this.previousUser) {
+      try {
+        const cached = localStorage.getItem(this.localKey);
+        if (cached) {
+          this.ws = validateState(JSON.parse(cached));
+          this.restorePreferences();
+          this.applyTheme();
+          void this.load();
+        }
+      } catch {
+        /* The server copy can still restore a damaged local account cache. */
+      }
+    }
+    this.previousUser = this.cloud.user?.uid ?? "";
+    this.cdr.markForCheck();
+  }
+  async connect() {
+    if (!this.cloud.configured) return;
+    try {
+      if (this.nativeDesktop && !this.loginWindow) {
+        await this.loginWithBrowser();
+        return;
+      }
+      const credential = await this.cloud.signInGoogle();
+      if (this.loginWindow && credential?.idToken) {
+        await requestJson(location.origin + "/api/desktop/auth", {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + this.loginToken,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            idToken: credential.idToken,
+            accessToken: credential.accessToken || "",
+          }),
+        });
+        this.loginToken = "";
+        this.loginDone = true;
+      }
+    } catch (error) {
+      this.notify(this.message(error));
     } finally {
-      this.cloudBusy = false;
       this.cdr.markForCheck();
     }
+  }
+  async signOut() {
+    try {
+      await this.cloud.signOut();
+    } catch (error) {
+      this.notify(this.message(error));
+    }
+  }
+  async createProfile() {
+    await this.cloud.createProfile(this.profileName);
+    this.profileName = "";
   }
   exportTable() {
     const rows = this.filteredAssets.map((a) => [
@@ -1026,85 +1266,37 @@ export class AppComponent implements OnDestroy {
       "text/csv",
     );
   }
-  private async restoreDesktopSync() {
-    try {
-      this.ws = validateState(
-        await requestJson(location.origin + "/api/desktop/sync", {
-          headers: { Authorization: "Bearer " + this.syncToken },
-        }),
-      );
-      this.desktopSync = true;
-      history.replaceState(null, "", location.pathname);
-      this.seedQuotes();
-      this.applyTheme();
-      await this.load();
-      this.configure();
-      this.notify(
-        "Conecta con Google, guarda o recupera el espacio y pulsa Devolver al escritorio.",
-      );
-    } catch (e) {
-      this.notify(this.message(e));
-    } finally {
-      this.cdr.markForCheck();
-    }
-  }
-  async returnToDesktop() {
-    try {
-      await requestJson(location.origin + "/api/desktop/sync", {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer " + this.syncToken,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(this.ws),
-      });
-      this.desktopSyncDone = true;
-      this.syncToken = "";
-      this.notify("Espacio enviado al escritorio. Puedes cerrar esta pestaña.");
-    } catch (e) {
-      this.notify(this.message(e));
-    }
-  }
-  async syncWithBrowser() {
+  private async loginWithBrowser() {
     if (this.nativeSyncBusy) return;
     this.nativeSyncBusy = true;
+    const api = desktopApi()!;
     try {
-      const api = desktopApi()!;
-      const token = await api.open_sync(this.ws);
-      this.notify(
-        "Continúa en el navegador y devuelve el espacio cuando termines.",
-      );
+      const token = await api.open_login();
+      this.notify("Continúa el acceso con Google en tu navegador.");
       let checking = false;
+      clearInterval(this.syncTimer);
       this.syncTimer = setInterval(async () => {
         if (checking) return;
         checking = true;
         try {
-          const result = await api.sync_result(token);
+          const result = await api.login_result(token);
           if (result) {
             clearInterval(this.syncTimer);
-            this.ws = validateState(result);
-            this.dataVersion++;
-            this.pending.clear();
-            this.cache.clear();
-            this.save();
-            this.seedQuotes();
-            this.applyTheme();
-            await this.load();
+            await this.cloud.acceptGoogleCredential(result);
             this.nativeSyncBusy = false;
-            this.notify("Espacio sincronizado desde el navegador");
           }
-        } catch (e) {
+        } catch (error) {
           clearInterval(this.syncTimer);
           this.nativeSyncBusy = false;
-          this.notify(this.message(e));
+          this.notify(this.message(error));
         } finally {
           checking = false;
           this.cdr.markForCheck();
         }
-      }, 1500);
-    } catch (e) {
+      }, 1000);
+    } catch (error) {
       this.nativeSyncBusy = false;
-      this.notify(this.message(e));
+      throw error;
     }
   }
 }

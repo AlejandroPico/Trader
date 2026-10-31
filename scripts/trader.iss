@@ -1,13 +1,13 @@
 [Setup]
 AppId={{737625B0-83A9-42E5-A7BD-8373E789F506}
 AppName=Trader
-AppVersion=0.1.0
+AppVersion=0.2.0
 AppPublisher=AlejandroPico
 DefaultDirName={localappdata}\Programs\Trader
 DefaultGroupName=Trader
 PrivilegesRequired=lowest
 OutputDir=..\release
-OutputBaseFilename=Trader-Setup-0.1.0
+OutputBaseFilename=Trader-Setup-0.2.0
 SetupIconFile=..\public\icons\trader.ico
 UninstallDisplayIcon={app}\Trader.exe
 Compression=lzma2

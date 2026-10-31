@@ -1,0 +1,21 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function owns(uid) { return request.auth != null && request.auth.uid == uid; }
+    match /users/{uid}/profiles/{profile} {
+      allow read, delete: if owns(uid);
+      allow create, update: if owns(uid)
+        && request.resource.data.keys().hasOnly(['name', 'workspace', 'writer', 'updatedAt'])
+        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 80
+        && request.resource.data.workspace is string && request.resource.data.workspace.size() <= 900000
+        && request.resource.data.writer is string && request.resource.data.writer.size() <= 80
+        && request.resource.data.updatedAt == request.time;
+    }
+    match /users/{uid}/settings/workspace {
+      allow read: if owns(uid);
+      allow create, update: if owns(uid)
+        && request.resource.data.keys().hasOnly(['activeProfile'])
+        && request.resource.data.activeProfile is string && request.resource.data.activeProfile.size() <= 80;
+    }
+  }
+}

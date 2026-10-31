@@ -5,6 +5,7 @@ RUN npm ci
 COPY angular.json tsconfig.json ngsw-config.json ./
 COPY src ./src
 COPY public ./public
+COPY scripts/config.mjs ./scripts/config.mjs
 RUN npm run build
 
 FROM python:3.15.2-slim

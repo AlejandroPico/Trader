@@ -4,5 +4,8 @@ import subprocess
 import sys
 
 root = Path(__file__).resolve().parents[1]
+for directory in ('release','build'):
+    if not (root/directory).resolve().is_relative_to(root):
+        raise RuntimeError('El directorio de compilación debe permanecer dentro del proyecto.')
 icon = "trader.ico" if sys.platform == "win32" else "trader.icns" if sys.platform == "darwin" else "icon-256.png"
 subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--windowed", "--name", "Trader", "--distpath", "release", "--icon", str(root / "public/icons" / icon), "--add-data", f"{root / 'dist/trader/browser'}:dist/trader/browser", "--add-data", f"{root / 'public/icons'}:public/icons", "--collect-all", "webview", "--hidden-import", "uvicorn.logging", "--hidden-import", "uvicorn.loops.auto", "--hidden-import", "uvicorn.protocols.http.auto", "--hidden-import", "uvicorn.lifespan.on", "desktop.py"], cwd=root, check=True)

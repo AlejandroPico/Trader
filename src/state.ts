@@ -1,3 +1,5 @@
+import { marketApi } from "./config";
+import { upgradeLegacyMarkets } from "./workspace-symbols";
 import type { Asset } from "./market";
 export type View =
   | "overview"
@@ -51,19 +53,32 @@ export interface Position {
   currency?: string;
 }
 export interface Workspace {
-  version: 1;
+  version: 2;
   tabs: Tab[];
   active: string;
   watchlist: string[];
   alerts: Alert[];
   positions: Position[];
   customAssets: Asset[];
-  mode: "demo" | "live";
   theme: "dark" | "light";
   api: string;
-  googleClient: string;
   events?: CalendarEvent[];
+  preferences?: Record<string, string | number | null>;
 }
+export const VIEW_DEFAULTS = {
+  country: "Todos",
+  category: "Todos",
+  sector: "Todos",
+  marketView: "table",
+  heatUniverse: "Acciones",
+  heatSize: "uniform",
+  minChange: "",
+  maxChange: "",
+  minPrice: "",
+  tableQuery: "",
+  sortKey: "symbol",
+  sortDir: 1,
+};
 export function newTab(view: View | ResearchView, symbol = "^GSPC"): Tab {
   return {
     id: crypto.randomUUID(),
@@ -79,7 +94,7 @@ export function newTab(view: View | ResearchView, symbol = "^GSPC"): Tab {
 export function fresh(): Workspace {
   const tab = newTab("overview");
   return {
-    version: 1,
+    version: 2,
     tabs: [tab],
     active: tab.id,
     watchlist: [
@@ -89,21 +104,19 @@ export function fresh(): Workspace {
       "^N225",
       "AAPL",
       "NVDA",
-      "BTC-USD",
+      "BTCUSDT",
       "EURUSD=X",
       "GC=F",
     ],
     alerts: [],
     positions: [],
     customAssets: [],
-    mode: "demo",
     theme: "dark",
-    api: location.port === "8765" ? location.origin : "http://127.0.0.1:8765",
-    googleClient: "",
+    api: marketApi(),
   };
 }
 export function validateState(raw: unknown): Workspace {
-  const w = raw as Workspace;
+  let w = raw as Workspace;
   const views = [
     "overview",
     "chart",
@@ -119,7 +132,7 @@ export function validateState(raw: unknown): Workspace {
   ];
   if (
     !w ||
-    w.version !== 1 ||
+    ![1, 2].includes(w.version) ||
     !Array.isArray(w.tabs) ||
     !w.tabs.length ||
     w.tabs.length > 100 ||
@@ -193,12 +206,7 @@ export function validateState(raw: unknown): Workspace {
     )
   )
     throw new Error("Posición no válida.");
-  if (
-    !["demo", "live"].includes(w.mode) ||
-    !["dark", "light"].includes(w.theme) ||
-    typeof w.api !== "string" ||
-    typeof w.googleClient !== "string"
-  )
+  if (!["dark", "light"].includes(w.theme) || typeof w.api !== "string")
     throw new Error("Configuración no válida.");
   w.customAssets ??= [];
   w.events ??= [];
@@ -235,18 +243,72 @@ export function validateState(raw: unknown): Workspace {
           "type",
           "currency",
           "sector",
-        ].every((k) => typeof (a as any)[k] === "string") &&
-        Number.isFinite(a.seed) &&
-        Number.isFinite(a.weight),
+        ].every((k) => typeof (a as any)[k] === "string"),
     )
   )
     throw new Error("Catálogo personalizado no válido.");
-  const api = new URL(w.api);
+  const api = new URL(w.api || location.origin);
   if (
     !["https:", "http:"].includes(api.protocol) ||
     api.username ||
     api.password
   )
     throw new Error("URL de datos no válida.");
-  return structuredClone(w);
+  if ((raw as { version: number }).version === 1) w = upgradeLegacyMarkets(w);
+  const assetKeys = [
+    "symbol",
+    "name",
+    "country",
+    "flag",
+    "exchange",
+    "type",
+    "currency",
+    "sector",
+    "industry",
+    "crypto",
+  ];
+  const preferences = Object.fromEntries(
+    Object.entries(w.preferences || {}).filter(
+      ([key, value]) =>
+        Object.hasOwn(VIEW_DEFAULTS, key) &&
+        ((typeof value === "string" && value.length <= 200) ||
+          (typeof value === "number" && Number.isFinite(value)) ||
+          value === null),
+    ),
+  );
+  if (
+    !["table", "map"].includes(String(preferences["marketView"] || "table")) ||
+    !["Acciones", "Cripto", "Índices"].includes(
+      String(preferences["heatUniverse"] || "Acciones"),
+    ) ||
+    !["uniform", "volume"].includes(
+      String(preferences["heatSize"] || "uniform"),
+    )
+  )
+    throw new Error("Preferencias de vista no válidas.");
+  if ((raw as { mode?: string }).mode === "demo") {
+    for (const tab of w.tabs) {
+      tab.drawings = [];
+      delete tab.zoom;
+    }
+    for (const alert of w.alerts) alert.triggered = false;
+  }
+  return structuredClone({
+    version: 2,
+    tabs: w.tabs,
+    active: w.active,
+    watchlist: w.watchlist,
+    alerts: w.alerts,
+    positions: w.positions,
+    theme: w.theme,
+    api: marketApi(),
+    events: w.events,
+    preferences,
+    customAssets: w.customAssets.map(
+      (a) =>
+        Object.fromEntries(
+          Object.entries(a).filter(([k]) => assetKeys.includes(k)),
+        ) as unknown as Asset,
+    ),
+  });
 }

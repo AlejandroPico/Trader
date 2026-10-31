@@ -4,7 +4,7 @@ export interface Candle {
   high: number;
   low: number;
   close: number;
-  volume: number;
+  volume: number | null;
 }
 export function sma(values: number[], period: number): (number | null)[] {
   let sum = 0;
@@ -85,7 +85,7 @@ export function parseCsv(text: string): Candle[] {
     .map((row) => {
       const fields = row.split(sep);
       const get = (k: string) => fields[headers.indexOf(k)]?.trim();
-      if (required.some((k) => !get(k)))
+      if (required.filter((k) => k !== "volume").some((k) => !get(k)))
         throw new Error("Hay celdas vacías en columnas obligatorias.");
       const raw = get("time");
       if (
@@ -102,17 +102,18 @@ export function parseCsv(text: string): Candle[] {
         high: Number(get("high")),
         low: Number(get("low")),
         close: Number(get("close")),
-        volume: Number(get("volume")),
+        volume: get("volume") ? Number(get("volume")) : null,
       };
       if (
-        !Object.values(c).every(Number.isFinite) ||
+        !Object.values(c)
+          .filter((value) => value !== null)
+          .every(Number.isFinite) ||
         !Number.isFinite(new Date(c.time).getTime()) ||
         (/^\d{4}-\d{2}-\d{2}$/.test(raw) &&
           new Date(time).toISOString().slice(0, 10) !== raw) ||
         c.low > Math.min(c.open, c.close) ||
         c.high < Math.max(c.open, c.close) ||
-        c.low < 0 ||
-        c.volume < 0
+        (c.volume !== null && c.volume < 0)
       )
         throw new Error("Hay fechas, precios o volúmenes no válidos.");
       return c;
@@ -127,15 +128,15 @@ export function parseCsv(text: string): Candle[] {
 
 export function quoteIsFresh(
   quote: {
-    demo: boolean;
     asOf: number;
     fetchedAt?: number;
     delay?: number | null;
+    timeKind?: string;
   },
   now = Date.now(),
 ) {
   return (
-    !quote.demo &&
+    quote.timeKind !== "snapshot" &&
     Number.isFinite(quote.asOf) &&
     Number.isFinite(quote.fetchedAt) &&
     now - quote.asOf >= -60000 &&

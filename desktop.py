@@ -14,19 +14,19 @@ import uvicorn
 import webview
 import httpx
 from backend.main import app
-from backend.desktop_sync import SyncBroker
+from backend.desktop_auth import LoginBroker
 
 
 class DesktopBridge:
     def __init__(self, broker):
         self.broker = broker
 
-    def open_sync(self, workspace):
-        token = self.broker.begin(workspace)
-        webbrowser.open(self.broker.origin + "/?desktop-sync=" + token)
+    def open_login(self):
+        token = self.broker.begin()
+        webbrowser.open(self.broker.origin + "/?desktop-login=" + token)
         return token
 
-    def sync_result(self, token):
+    def login_result(self, token):
         return self.broker.poll(token)
 
     def new_window(self, workspace_id):
@@ -82,8 +82,8 @@ def main():
         time.sleep(.1)
     else:
         raise RuntimeError("El servicio de datos no ha respondido.")
-    broker = SyncBroker()
-    app.state.desktop_sync = broker
+    broker = LoginBroker()
+    app.state.desktop_auth = broker
     bridge = DesktopBridge(broker)
     window = webview.create_window("Trader", broker.origin, width=1500, height=980, min_size=(900, 650), background_color="#101318", js_api=bridge)
     storage = Path(os.getenv("LOCALAPPDATA", Path.home() / ".local/share")) / "Trader" / "WebView"

@@ -1,651 +1,755 @@
-<div class="app-shell" [attr.inert]="searchOpen||settings?'':null">
-  <header class="topbar">
-    <button
-      class="brand"
-      (click)="open('overview')"
-      aria-label="Trader, inicio"
-    >
-      <img src="favicon.svg" alt="" /><span
-        >trader<span class="brand-dot">.</span></span
-      >
-    </button>
-    <button
-      class="mobile-toggle icon-btn"
-      (click)="mobileMenu=!mobileMenu"
-      aria-label="Abrir navegación"
-    >
-      <t-icon name="menu" />
-    </button>
-    <button class="global-search" aria-label="Buscar activos" (click)="searchOpen=true">
-      <t-icon name="search" /><span>Buscar símbolo, activo o mercado</span
-      ><kbd>Ctrl K</kbd>
-    </button>
-    <div class="top-actions">
-      <button
-        class="mode-pill"
-        [class.live]="ws.mode==='live'"
-        (click)="configure()"
-      >
-        <i></i>{{ws.mode==='demo'?'Demostración':'Datos de mercado'}}</button
-      ><button
-        class="icon-btn"
-        (click)="toggleTheme()"
-        [attr.aria-label]="ws.theme==='dark'?'Tema claro':'Tema oscuro'"
-      >
-        <t-icon [name]="ws.theme==='dark'?'sun':'moon'" /></button
-      ><button class="account-btn" aria-label="Abrir cuenta" (click)="configure()">
-        <t-icon name="user" /><span
-          >{{cloud.email?'Mi cuenta':'Espacio local'}}</span
-        >
-      </button>
-    </div>
-  </header>
-  <aside class="sidebar" [class.mobile-open]="mobileMenu">
-    <div class="sidebar-label">ESPACIO DE TRABAJO</div>
-    <nav aria-label="Navegación principal">
-      @for(item of nav;track item.view){<button
-        [class.active]="active.view===item.view"
-        (click)="open(item.view)"
-      >
-        <t-icon [name]="item.icon" /><span>{{item.label}}</span
-        >@if(item.view==='alerts'&&ws.alerts.length){<small>{{ws.alerts.length}}</small>}</button
-      >}
-    </nav>
-    <div class="sidebar-separator"></div>
-    <div class="sidebar-label">TUS MERCADOS</div>
-    <button class="country-shortcut" (click)="selectCountry('España')">
-      <span class="country-code">ES</span><span>España</span
-      ><small>BME</small></button
-    ><button class="country-shortcut" (click)="selectCountry('Estados Unidos')">
-      <span class="country-code">US</span><span>Estados Unidos</span></button
-    ><button class="country-shortcut" (click)="selectCountry('Japón')">
-      <span class="country-code">JP</span><span>Japón</span
-      ><small>TSE</small></button
-    ><button class="all-markets" (click)="country='Todos';open('markets')">
-      Todos los mercados<t-icon name="arrow" />
-    </button>
-    <div class="sidebar-bottom">
-      <button (click)="install()">
-        <t-icon name="download" />Instalar aplicación</button
-      ><button (click)="configure()">
-        <t-icon name="settings" />Ajustes y cuenta
-      </button>
-      <div class="version">
-        <img src="favicon.svg" alt="" /><span>Trader <small>0.1.0</small></span
-        ><span class="local-dot"></span>
-      </div>
-    </div>
-  </aside>
-  <div class="workspace">
-    <div class="tabbar" role="tablist" aria-label="Pestañas del espacio">
-      @for(tab of ws.tabs;track tab.id){
-      <div class="tab" [class.selected]="tab.id===ws.active">
+@if (loginWindow) {
+  <main class="login-page">
+    <section class="login-card">
+      <img src="favicon.svg" alt="" />
+      <h1>Trader</h1>
+      @if (loginDone) {
+        <h2>Sesión iniciada</h2>
+        <p>Puedes cerrar esta ventana y volver a la aplicación.</p>
+      } @else {
+        <h2>Iniciar sesión</h2>
         <button
-          role="tab"
-          [attr.aria-selected]="tab.id===ws.active"
-          (click)="selectTab(tab)"
+          class="google-signin"
+          (click)="connect()"
+          [disabled]="!cloud.configured || !cloud.available || cloud.busy"
         >
-          <t-icon [name]="tab.view==='chart'?'chart':'layers'" /><span
-            >{{title(tab)}}</span
-          ></button
-        ><button
-          class="tab-close"
-          (click)="closeTab(tab,$event)"
-          [attr.aria-label]="'Cerrar '+title(tab)"
-        >
-          <t-icon name="close" />
+          <ng-container *ngTemplateOutlet="googleBrand" />Continuar con Google
         </button>
-      </div>
-      }<button
-        class="icon-btn add-tab"
-        (click)="searchOpen=true"
-        aria-label="Añadir pestaña"
-      >
-        <t-icon name="plus" />
-      </button>
-      <div class="tab-spacer"></div>
-      <button
-        class="icon-btn"
-        (click)="newWindow()"
-        title="Nueva ventana"
-        aria-label="Nueva ventana"
-      >
-        <t-icon name="external" />
-      </button>
-    </div>
-    @if(storageWarning){
-    <div class="notice warning">
-      {{storageWarning}}<button (click)="exportWorkspace()">
-        Exportar copia
-      </button>
-    </div>
-    }
-    <div class="workarea">
-      <main>
-        @if(desktopSync){<div class="notice"><t-icon name="cloud"/><span>{{desktopSyncDone?'Espacio devuelto al escritorio. Puedes cerrar esta pestaña.':'Sincronización con la aplicación de escritorio'}}</span>@if(!desktopSyncDone){<button (click)="returnToDesktop()">Devolver al escritorio</button>}</div>}
-        <div class="page-heading">
-          <div>
-            <div class="eyebrow">
-              {{active.view==='chart'?asset.exchange:'MERCADOS GLOBALES'}}
-              <span>/</span> {{active.view==='chart'?asset.type:'TERMINAL'}}
-            </div>
-            <h1>{{active.view==='chart'?asset.name:title(active)}}</h1>
-          </div>
-          <div class="heading-actions">
-            @if(active.view==='overview'){<span class="session-date"
-              >{{time(DateNow)}}</span
-            >}<button
-              class="icon-btn"
-              (click)="refreshCurrent()"
-              aria-label="Actualizar datos"
-              title="Actualizar datos"
-            >
-              <t-icon name="refresh" /></button
-            ><button
-              class="icon-btn"
-              (click)="fullscreen()"
-              aria-label="Pantalla completa"
-              title="Pantalla completa"
-            >
-              <t-icon name="expand" />
-            </button>
-          </div>
-        </div>
-        @if(ws.mode==='demo'&&!['news','rates','macro','calendar'].includes(active.view)&&active.symbol!=='CSV'){
-        <div class="data-banner">
-          <span class="demo-dot"></span>Datos sintéticos de demostración
-          <span class="banner-date">· 29 oct 2026</span
-          ><button (click)="switchMode('live')">
-            Conectar datos<t-icon name="arrow" />
-          </button>
-        </div>
+        @if (!cloud.configured) {
+          <p>
+            El acceso con Google todavía no está activado por el propietario.
+          </p>
         }
-        @if(['news','rates','macro','calendar'].includes(active.view)){<research-panel [view]="active.view" [api]="ws.api" [theme]="ws.theme" [assets]="assets" [events]="ws.events??[]" (eventsChange)="ws.events=$event;save()"/>}
-        @switch(active.view){ @case('overview'){
-        <div class="index-grid">
-          @for(a of featured.slice(0,4);track a.symbol){<button
-            class="index-card"
-            (click)="open('chart',a.symbol)"
-          >
-            <div class="index-top">
-              <span class="country-code">{{a.flag}}</span><span>{{a.name}}</span
-              ><t-icon name="chevron" />
-            </div>
-            <div class="index-value">
-              {{n(quotes[a.symbol]?.price)}}<span
-                class="change"
-                [class.up]="(quotes[a.symbol]?.change??0)>=0"
-                [class.down]="(quotes[a.symbol]?.change??0)<0"
-                >{{pct(quotes[a.symbol]?.change)}}</span
-              >
-            </div>
-            @if(ws.mode==='demo'){<svg
-              viewBox="0 0 81 30"
-              class="spark"
-              [class.negative]="(quotes[a.symbol]?.change??0)<0"
-              aria-hidden="true"
+        @if (cloud.error) {
+          <p role="alert">{{ cloud.error }}</p>
+        }
+      }
+    </section>
+  </main>
+} @else {
+  <div
+    class="app-shell"
+    [attr.inert]="searchOpen || settings || about ? '' : null"
+  >
+    <header class="topbar">
+      <button
+        class="app-menu"
+        (click)="mobileMenu = !mobileMenu; accountOpen = false"
+        aria-label="Menú de Trader"
+        [attr.aria-expanded]="mobileMenu"
+        aria-controls="main-navigation"
+      >
+        <img src="favicon.svg" alt="" />
+      </button>
+      <div class="tabbar" role="tablist" aria-label="Pestañas del espacio">
+        @for (tab of ws.tabs; track tab.id) {
+          <div class="tab" [class.selected]="tab.id === ws.active">
+            <button
+              role="tab"
+              [attr.aria-selected]="tab.id === ws.active"
+              (click)="selectTab(tab)"
+              [title]="title(tab)"
             >
-              <polyline [attr.points]="spark(a.symbol)" /></svg
-            >}
-            <div class="index-source">
-              {{quotes[a.symbol]?.demo?'DEMO':quotes[a.symbol]?time(quotes[a.symbol].asOf):'SIN
-              COTIZACIÓN'}} <span>{{a.currency}}</span>
-            </div></button
-          >}
-        </div>
-        <section class="panel overview-chart">
-          <div class="panel-heading">
-            <h2>Gráfico de mercado</h2>
-            <button class="text-btn" (click)="open('chart',active.symbol)">
-              Abrir gráfico<t-icon name="external" />
+              <t-icon
+                [name]="tab.view === 'chart' ? 'chart' : 'layers'"
+              /><span>{{ title(tab) }}</span>
             </button>
-          </div>
-          <ng-container *ngTemplateOutlet="pricePanel;context:{compact:true}" />
-        </section>
-        <div class="overview-bottom">
-          <section class="panel">
-            <div class="panel-heading">
-              <h2>Mercados por país</h2>
-              <button
-                class="text-btn"
-                (click)="country='Todos';open('markets')"
-              >
-                Explorar<t-icon name="arrow" />
-              </button>
-            </div>
-            <market-visual
-              kind="map"
-              [assets]="assets"
-              [quotes]="quotes"
-              [theme]="ws.theme"
-              (pick)="selectCountry($event)"
-            />
-            <div class="panel-foot">
-              <span class="map-legend"
-                ><i class="red"></i> Retroceso
-                <i class="green"></i> Avance</span
-              ><span>Variación de índices</span>
-            </div>
-          </section>
-          <section class="panel">
-            <div class="panel-heading">
-              <h2>Mapa de calor</h2>
-              <button class="text-btn" (click)="open('heatmap')">
-                Ampliar<t-icon name="arrow" />
-              </button>
-            </div>
-            <market-visual
-              [assets]="assets.slice(14,25)"
-              [quotes]="quotes"
-              [theme]="ws.theme"
-              (pick)="open('chart',$event)"
-            />
-            <div class="panel-foot">
-              <span>Acciones · variación por vela</span
-              ><span>Tamaño: peso ilustrativo</span>
-            </div>
-          </section>
-        </div>
-        } @case('chart'){
-        <section class="panel full-chart">
-          <ng-container
-            *ngTemplateOutlet="pricePanel;context:{compact:false}"
-          />
-        </section>
-        <div class="chart-stats">
-          <div>
-            <span>Máximo del período</span><strong>{{n(rangeHigh)}}</strong>
-          </div>
-          <div>
-            <span>Mínimo del período</span><strong>{{n(rangeLow)}}</strong>
-          </div>
-          <div>
-            <span>Volumen · última vela</span
-            ><strong>{{compact(lastCandle?.volume)}}</strong>
-          </div>
-          <div>
-            <span>RSI · 14 períodos</span
-            ><strong>{{n(indicatorRsi??undefined,2)}}</strong>
-          </div>
-          <div>
-            <span>Velas cargadas</span
-            ><strong>{{series?.candles?.length??'—'}}</strong>
-          </div>
-        </div>
-        <div class="chart-notes">
-          <t-icon name="info" /><span
-            >Rueda: zoom · Arrastrar: desplazar · Medición y tendencia: dos
-            puntos en el gráfico. Al comparar, ambos activos parten de 0 % en
-            su primera fecha común y comparten la escala.</span
-          >
-        </div>
-        } @case('markets'){
-        <div class="market-map panel">
-          <market-visual
-            kind="map"
-            [assets]="assets"
-            [quotes]="quotes"
-            [theme]="ws.theme"
-            (pick)="country=$event||'Todos'"
-          />
-          <div class="map-overlay">
-            <h2>{{country==='Todos'?'Bolsas del mundo':country}}</h2>
-            <span
-              >{{country==='Todos'?countries.length-1+' países y
-              territorios':'Mercados seleccionados'}}</span
-            ><small>Selecciona un país · Rueda para ampliar</small>
-          </div>
-        </div>
-        <ng-container *ngTemplateOutlet="filters" /><ng-container
-          *ngTemplateOutlet="assetTable"
-        />
-        } @case('heatmap'){
-        <ng-container *ngTemplateOutlet="filters" />
-        <div class="heatmap-heading">
-          <span
-            >{{heatAssets.length}} acciones
-            <span class="muted">· variación de la última vela</span></span
-          >
-          <div class="heat-scale">
-            <span>−3 %</span><i></i><span>+3 %</span>
-          </div>
-        </div>
-        <section class="panel large-heatmap">
-          <market-visual
-            [assets]="heatAssets"
-            [quotes]="quotes"
-            [theme]="ws.theme"
-            (pick)="open('chart',$event)"
-          />
-        </section>
-        <div class="panel-foot">
-          <span>Selecciona un activo para abrir su gráfico</span
-          ><span
-            >Áreas con pesos ilustrativos; no representan capitalización</span
-          >
-        </div>
-        @if(!heatAssets.length){
-        <div class="empty-state">
-          No hay acciones para estos filtros.<button (click)="resetFilters()">
-            Restablecer filtros
-          </button>
-        </div>
-        } } @case('screener'){ <ng-container *ngTemplateOutlet="filters" />
-        <div class="screener-rules panel">
-          <label
-            >Variación mínima %<input
-              type="number"
-              [(ngModel)]="minChange"
-              placeholder="Sin límite" /></label
-          ><label
-            >Variación máxima %<input
-              type="number"
-              [(ngModel)]="maxChange"
-              placeholder="Sin límite" /></label
-          ><label
-            >Precio mínimo<input
-              type="number"
-              [(ngModel)]="minPrice"
-              placeholder="Sin límite" /></label
-          ><label
-            >Sector<select [(ngModel)]="sector">
-              <option>Todos</option>
-              @for(s of sectors;track s){
-              <option>{{s}}</option>
-              }
-            </select></label
-          ><button class="text-btn" (click)="resetFilters()">
-            Limpiar filtros
-          </button>
-        </div>
-        <ng-container *ngTemplateOutlet="assetTable" />
-        } @case('portfolio'){
-        <div class="section-toolbar">
-          <div class="muted">Registro manual de posiciones</div>
-          <select
-            aria-label="Divisa de la cartera"
-            [(ngModel)]="portfolioCurrency"
-          >
-            <option>USD</option>
-            @for(c of portfolioCurrencies;track c){@if(c!=='USD'){
-            <option>{{c}}</option>
-            }}
-          </select>
-        </div>
-        <div class="portfolio-summary">
-          <div class="panel">
-            <span>Valor registrado · {{portfolioCurrency}}</span
-            ><strong>{{portfolioComplete?n(portfolioTotal):'—'}}</strong
-            ><small
-              >{{ws.mode==='demo'?'Valoración con datos sintéticos':'Últimas
-              cotizaciones disponibles'}}</small
-            >
-          </div>
-          <div class="panel">
-            <span>Coste de adquisición</span
-            ><strong>{{n(portfolioCost)}}</strong
-            ><small
-              >{{portfolioAssets.length}} posiciones en
-              {{portfolioCurrency}}</small
-            >
-          </div>
-          <div class="panel">
-            <span>Resultado no realizado</span
-            ><strong
-              [class.up]="portfolioTotal>=portfolioCost"
-              [class.down]="portfolioTotal<portfolioCost"
-              >{{portfolioComplete?n(portfolioTotal-portfolioCost):'—'}}</strong
-            ><small>Sin comisiones ni dividendos</small>
-          </div>
-        </div>
-        <form class="entry-form panel" (ngSubmit)="addPosition()">
-          <label
-            >Activo<select name="positionSymbol" [(ngModel)]="positionSymbol">
-              @for(a of assets;track a.symbol){
-              <option [value]="a.symbol">{{a.symbol}} · {{a.name}}</option>
-              }
-            </select></label
-          ><label
-            >Unidades<input
-              name="quantity"
-              type="number"
-              min="0.00000001"
-              step="any"
-              [(ngModel)]="quantity"
-              required /></label
-          ><label
-            >Coste unitario<input
-              name="cost"
-              type="number"
-              min="0.00000001"
-              step="any"
-              [(ngModel)]="cost"
-              required /></label
-          ><button class="primary" type="submit">
-            <t-icon name="plus" />Añadir posición
-          </button>
-        </form>
-        <div class="table-panel panel">
-          <table>
-            <thead>
-              <tr>
-                <th>Activo</th>
-                <th>Unidades</th>
-                <th>Coste</th>
-                <th>Último</th>
-                <th>Valor</th>
-                <th>Resultado</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              @for(p of portfolioAssets;track p.id){
-              <tr>
-                <td>
-                  <button class="asset-cell" (click)="open('chart',p.symbol)">
-                    <b>{{p.symbol}}</b
-                    ><small>{{assetFor(p.symbol).name}}</small>
-                  </button>
-                </td>
-                <td>{{n(p.quantity,4)}}</td>
-                <td>{{n(p.cost)}}<small>{{p.currency??currencyFor(p.symbol)}}</small></td>
-                <td>{{n(quotes[p.symbol]?.price)}}<small>{{currencyFor(p.symbol)}}</small></td>
-                <td>
-                  {{n(positionValue(p))}}
-                </td>
-                <td
-                  [class.up]="(quotes[p.symbol]?.price??0)>=p.cost"
-                  [class.down]="(quotes[p.symbol]?.price??0)<p.cost"
-                >
-                  {{n(positionValue(p)===undefined?undefined:positionValue(p)!-p.quantity*p.cost)}}
-                </td>
-                <td>
-                  <button
-                    class="icon-btn"
-                    (click)="removePosition(p.id)"
-                    aria-label="Eliminar posición"
-                  >
-                    <t-icon name="trash" />
-                  </button>
-                </td>
-              </tr>
-              }@empty{
-              <tr>
-                <td colspan="7" class="empty-cell">
-                  Sin posiciones en {{portfolioCurrency}}. Añade un activo con
-                  su coste de adquisición.
-                </td>
-              </tr>
-              }
-            </tbody>
-          </table>
-        </div>
-        <p class="subtle-note">
-          Las valoraciones se agrupan por divisa. No se suman importes de
-          monedas diferentes.
-        </p>
-        } @case('alerts'){
-        <div class="notice">
-          <t-icon name="info" /><span
-            >Las alertas se comprueban cada 60 segundos, con datos reales y
-            mientras la aplicación esté abierta.</span
-          ><button (click)="enableNotifications()">Activar avisos</button>
-        </div>
-        <form class="entry-form panel" (ngSubmit)="addAlert()">
-          <label
-            >Activo<select name="alertSymbol" [(ngModel)]="alertSymbol">
-              @for(a of assets;track a.symbol){
-              <option [value]="a.symbol">{{a.symbol}} · {{a.name}}</option>
-              }
-            </select></label
-          ><label
-            >Condición<select name="direction" [(ngModel)]="alertDirection">
-              <option value="above">Precio ≥ nivel</option>
-              <option value="below">Precio ≤ nivel</option>
-            </select></label
-          ><label
-            >Nivel<input
-              name="price"
-              type="number"
-              min="0.00000001"
-              step="any"
-              [(ngModel)]="alertPrice"
-              required /></label
-          ><button class="primary" type="submit">
-            <t-icon name="plus" />Crear alerta
-          </button>
-        </form>
-        <div class="alert-list">
-          @for(a of ws.alerts;track a.id){
-          <div class="panel alert-row">
-            <div class="alert-icon"><t-icon name="bell" /></div>
-            <button class="asset-cell" (click)="open('chart',a.symbol)">
-              <b>{{a.symbol}}</b><small>{{assetFor(a.symbol).name}}</small>
-            </button>
-            <div>
-              {{a.direction==='above'?'≥':'≤'}} {{n(a.price)}}
-              <small>{{assetFor(a.symbol).currency}}</small>
-            </div>
-            <span class="badge" [class.triggered]="a.triggered"
-              >{{a.triggered?'Activada':ws.mode==='demo'?'Pausada · demo':'En
-              seguimiento'}}</span
-            >@if(a.triggered){<button
-              class="text-btn"
-              (click)="resetAlert(a.id)"
-            >
-              Rearmar</button
-            >}<button
-              class="icon-btn"
-              (click)="removeAlert(a.id)"
-              aria-label="Eliminar alerta"
-            >
-              <t-icon name="trash" />
-            </button>
-          </div>
-          }@empty{
-          <div class="empty-state panel">
-            <t-icon name="bell" />
-            <h2>Sin alertas</h2>
-            <p>Selecciona un activo y un nivel de precio.</p>
-          </div>
-          }
-        </div>
-        } }
-      </main>
-      <aside class="watchlist">
-        <div class="watch-heading">
-          <h2>Seguimiento <small>{{ws.watchlist.length}}</small></h2>
-          <button
-            class="icon-btn"
-            (click)="searchOpen=true"
-            aria-label="Añadir activo al seguimiento"
-          >
-            <t-icon name="plus" />
-          </button>
-        </div>
-        <div class="watch-columns">
-          <span>SÍMBOLO</span><span>ÚLTIMO / VAR. %</span>
-        </div>
-        <div class="watch-items">
-          @for(a of watchAssets;track a.symbol){
-          <div class="watch-row" [class.current]="a.symbol===active.symbol">
-            <button class="watch-asset" (click)="open('chart',a.symbol)">
-              <span class="asset-monogram" [attr.data-kind]="a.type"
-                >{{a.symbol.replace('^','').slice(0,2)}}</span
-              ><span
-                ><b>{{a.symbol.replace('^','')}}</b
-                ><small>{{a.name}}</small></span
-              ><span class="watch-price"
-                ><b>{{n(quotes[a.symbol]?.price)}}</b
-                ><small
-                  [class.up]="(quotes[a.symbol]?.change??0)>=0"
-                  [class.down]="(quotes[a.symbol]?.change??0)<0"
-                  >{{pct(quotes[a.symbol]?.change)}}</small
-                ></span
-              ></button
-            ><button
-              class="watch-remove"
-              (click)="toggleWatch(a.symbol)"
-              [attr.aria-label]="'Quitar '+a.symbol+' del seguimiento'"
+            <button
+              class="tab-close"
+              (click)="closeTab(tab, $event)"
+              [attr.aria-label]="'Cerrar ' + title(tab)"
             >
               <t-icon name="close" />
             </button>
           </div>
-          }@empty{
-          <div class="empty-watch">
-            Añade activos con la estrella del buscador.
-          </div>
-          }
+        }
+      </div>
+      <button
+        class="icon-btn add-tab"
+        (click)="searchOpen = true; accountOpen = false"
+        aria-label="Añadir pestaña"
+        title="Añadir pestaña"
+      >
+        <t-icon name="plus" />
+      </button>
+      <div class="topbar-space"></div>
+      <button
+        class="account-circle"
+        (click)="accountOpen = !accountOpen; mobileMenu = false"
+        aria-label="Cuenta"
+        aria-haspopup="dialog"
+        [attr.aria-expanded]="accountOpen"
+      >
+        @if (cloud.user?.photoURL) {
+          <img
+            [src]="cloud.user!.photoURL"
+            alt=""
+            referrerpolicy="no-referrer"
+          />
+        } @else {
+          <t-icon name="user" />
+        }
+      </button>
+    </header>
+    @if (mobileMenu) {
+      <div class="drawer-shade" (click)="mobileMenu = false"></div>
+      <aside
+        class="sidebar"
+        id="main-navigation"
+        role="dialog"
+        aria-label="Navegación de Trader"
+        aria-modal="true"
+        tDialog
+      >
+        <div class="drawer-brand">
+          <img src="favicon.svg" alt="" /><strong>Trader</strong
+          ><button
+            class="icon-btn"
+            (click)="mobileMenu = false"
+            aria-label="Cerrar menú"
+          >
+            <t-icon name="close" />
+          </button>
         </div>
-        <button class="add-symbol" (click)="searchOpen=true">
-          <t-icon name="plus" />Añadir símbolo
+        <button
+          class="drawer-search"
+          (click)="mobileMenu = false; searchOpen = true"
+        >
+          <t-icon name="search" />Buscar activos<kbd>Ctrl K</kbd>
         </button>
-        <div class="watch-bottom">
-          <div class="mini-label">ESTADO DE DATOS</div>
-          <p>
-            <i [class.live-dot]="ws.mode==='live'"></i>{{ws.mode==='demo'?'Modo
-            demostración':'Consulta a proveedores'}}
-          </p>
-          <small
-            >{{ws.mode==='demo'?'Las cifras y series son sintéticas.':'Cada
-            activo indica su fuente y fecha. Puede existir retraso.'}}</small
-          ><button class="text-btn" (click)="configure()">
-            Configurar conexión<t-icon name="chevron" />
+        <div class="sidebar-scroll">
+          <div class="sidebar-label">ESPACIO DE TRABAJO</div>
+          <nav aria-label="Vistas">
+            @for (item of nav; track item.view) {
+              <button
+                [class.active]="active.view === item.view"
+                (click)="navigate(item.view)"
+              >
+                <t-icon [name]="item.icon" /><span>{{ item.label }}</span>
+                @if (item.view === "alerts" && ws.alerts.length) {
+                  <small>{{ ws.alerts.length }}</small>
+                }
+              </button>
+            }
+          </nav>
+          <div class="sidebar-separator"></div>
+          <div class="sidebar-label">MERCADOS</div>
+          @for (c of ["España", "Estados Unidos", "Japón"]; track c) {
+            <button class="country-shortcut" (click)="selectCountry(c)">
+              <span class="country-code">{{
+                c === "España" ? "ES" : c === "Japón" ? "JP" : "US"
+              }}</span
+              ><span>{{ c }}</span>
+            </button>
+          }
+          <button
+            class="all-markets"
+            (click)="country = 'Todos'; navigate('markets')"
+          >
+            Todos los países<t-icon name="arrow" />
+          </button>
+        </div>
+        <div class="sidebar-bottom">
+          <button (click)="install()">
+            <t-icon name="download" />Instalar aplicación
+          </button>
+          <button (click)="configure()">
+            <t-icon name="settings" />Ajustes
+          </button>
+          <button
+            class="about-entry"
+            (click)="about = true; mobileMenu = false"
+          >
+            <t-icon name="info" /><span>Acerca de Trader</span
+            ><small>0.2.0</small>
           </button>
         </div>
       </aside>
+    }
+    <div class="workspace">
+      @if (storageWarning) {
+        <div class="notice warning">
+          {{ storageWarning
+          }}<button (click)="exportWorkspace()">Exportar copia</button>
+        </div>
+      }
+      <div class="workarea">
+        <main>
+          @if (!["chart", "overview"].includes(active.view)) {
+            <div class="page-heading">
+              <div>
+                <h1>
+                  {{ active.view === "chart" ? asset.name : title(active) }}
+                </h1>
+              </div>
+              <div class="heading-actions">
+                @if (active.view === "overview") {
+                  <span class="session-date">{{ time(DateNow) }}</span>
+                }
+                <button
+                  class="icon-btn"
+                  (click)="refreshCurrent()"
+                  aria-label="Actualizar datos"
+                  [class.is-refreshing]="refreshing"
+                  title="Actualizar datos"
+                >
+                  <t-icon name="refresh" /></button
+                ><button
+                  class="icon-btn"
+                  (click)="fullscreen()"
+                  aria-label="Pantalla completa"
+                  title="Pantalla completa"
+                >
+                  <t-icon name="expand" />
+                </button>
+              </div>
+            </div>
+          }
+          @if (["news", "rates", "macro", "calendar"].includes(active.view)) {
+            <research-panel
+              [view]="active.view"
+              [api]="ws.api"
+              [theme]="ws.theme"
+              [assets]="assets"
+              [events]="ws.events ?? []"
+              (eventsChange)="ws.events = $event; save()"
+            />
+          }
+          @switch (active.view) {
+            @case ("overview") {
+              <div class="market-strip">
+                @for (a of featured; track a.symbol) {
+                  <button (click)="open('chart', a.symbol)" [title]="a.name">
+                    <span>{{ a.name }}</span
+                    ><strong>{{ n(quotes[a.symbol]?.price) }}</strong
+                    ><small
+                      [class.up]="
+                        !!quotes[a.symbol] && quotes[a.symbol].change >= 0
+                      "
+                      [class.down]="(quotes[a.symbol]?.change ?? 0) < 0"
+                      >{{ pct(quotes[a.symbol]?.change) }}</small
+                    >
+                  </button>
+                }
+              </div>
+              <section class="panel overview-chart">
+                <ng-container
+                  *ngTemplateOutlet="pricePanel; context: { compact: false }"
+                />
+              </section>
+            }
+            @case ("chart") {
+              <section class="panel full-chart">
+                <ng-container
+                  *ngTemplateOutlet="pricePanel; context: { compact: false }"
+                />
+              </section>
+              @if (series) {
+                <div class="chart-stats">
+                  <span
+                    >Máx. <b>{{ n(rangeHigh) }}</b></span
+                  ><span
+                    >Mín. <b>{{ n(rangeLow) }}</b></span
+                  ><span
+                    >Vol. <b>{{ compact(lastCandle?.volume) }}</b></span
+                  ><span
+                    >RSI 14 <b>{{ n(indicatorRsi ?? undefined, 2) }}</b></span
+                  ><span>{{ series.candles.length }} velas</span>
+                </div>
+              }
+            }
+            @case ("markets") {
+              <div class="market-viewbar">
+                <div class="segmented">
+                  <button
+                    [class.active]="marketView === 'table'"
+                    (click)="marketView = 'table'; saveView()"
+                  >
+                    Tabla</button
+                  ><button
+                    [class.active]="marketView === 'map'"
+                    (click)="marketView = 'map'; saveView()"
+                  >
+                    Mapa
+                  </button>
+                </div>
+              </div>
+              <ng-container *ngTemplateOutlet="filters" />
+              @if (marketView === "map") {
+                <section class="market-map panel">
+                  <market-visual
+                    kind="map"
+                    [selectedCountry]="country"
+                    [assets]="assets"
+                    [quotes]="quotes"
+                    [theme]="ws.theme"
+                    (pick)="country = $event || 'Todos'; saveView()"
+                  />
+                </section>
+                <div class="panel-foot">
+                  <span>Variación del índice de referencia de cada país</span
+                  ><button
+                    class="text-btn"
+                    (click)="marketView = 'table'; saveView()"
+                  >
+                    {{
+                      country === "Todos"
+                        ? "Ver mercados"
+                        : country + " · ver activos"
+                    }}<t-icon name="arrow" />
+                  </button>
+                </div>
+              } @else {
+                <ng-container *ngTemplateOutlet="assetTable" />
+              }
+            }
+            @case ("heatmap") {
+              <div class="heatmap-controls">
+                <div class="segmented">
+                  @for (type of ["Acciones", "Cripto", "Índices"]; track type) {
+                    <button
+                      [class.active]="heatUniverse === type"
+                      (click)="
+                        heatUniverse = type; country = 'Todos'; saveView()
+                      "
+                    >
+                      {{ type }}
+                    </button>
+                  }
+                </div>
+                <select
+                  [(ngModel)]="country"
+                  (ngModelChange)="saveView()"
+                  aria-label="País del mapa de calor"
+                >
+                  <option value="Todos">Todos los países</option>
+                  @for (c of countries; track c) {
+                    <option>{{ c }}</option>
+                  }
+                </select>
+                <label class="heat-size"
+                  >Tamaño<select
+                    [(ngModel)]="heatSize"
+                    (ngModelChange)="saveView()"
+                    aria-label="Tamaño de las celdas"
+                  >
+                    <option value="uniform">Uniforme</option>
+                    <option value="volume">Volumen</option>
+                  </select></label
+                >
+                <div class="heat-scale">
+                  <span>−3 %</span><i></i><span>+3 %</span>
+                </div>
+              </div>
+              @if (heatQuoteCount) {
+                <section class="panel large-heatmap">
+                  <market-visual
+                    [assets]="heatAssets"
+                    [quotes]="quotes"
+                    [theme]="ws.theme"
+                    [sizeMetric]="heatSize"
+                    (pick)="open('chart', $event)"
+                  />
+                </section>
+              } @else {
+                <div class="empty-state heatmap-empty">
+                  <t-icon name="heat" />
+                  <h2>
+                    {{
+                      heatSize === "volume"
+                        ? "Sin volumen disponible"
+                        : "Sin cotizaciones disponibles"
+                    }}
+                  </h2>
+                  <p>
+                    {{
+                      heatAssets.length
+                        ? (heatSize === "volume" ? "El proveedor no publica volumen para esta selección." : "Esperando datos del proveedor.")
+                        : "No hay activos para este país."
+                    }}
+                  </p>
+                  <button class="text-btn" (click)="refreshQuotes()">
+                    Actualizar
+                  </button>
+                </div>
+              }
+              <div class="panel-foot">
+                <span
+                  >{{ heatQuoteCount }} / {{ heatAssets.length }} activos
+                  representados · Clic: ampliar grupo · Rueda: zoom · Activo:
+                  abrir gráfico</span
+                ><span
+                  >{{
+                    heatSize === "uniform"
+                      ? "Superficie uniforme"
+                      : "Volumen de la última sesión"
+                  }}
+                  · Porcentaje frente al cierre anterior</span
+                >
+              </div>
+            }
+            @case ("screener") {
+              <ng-container *ngTemplateOutlet="filters" />
+              <div class="screener-rules panel">
+                <label
+                  >Variación mínima %<input
+                    type="number"
+                    [(ngModel)]="minChange"
+                    (ngModelChange)="saveView()"
+                    placeholder="Sin límite" /></label
+                ><label
+                  >Variación máxima %<input
+                    type="number"
+                    [(ngModel)]="maxChange"
+                    (ngModelChange)="saveView()"
+                    placeholder="Sin límite" /></label
+                ><label
+                  >Precio mínimo<input
+                    type="number"
+                    [(ngModel)]="minPrice"
+                    (ngModelChange)="saveView()"
+                    placeholder="Sin límite" /></label
+                ><label
+                  >Sector<select
+                    [(ngModel)]="sector"
+                    (ngModelChange)="saveView()"
+                  >
+                    <option>Todos</option>
+                    @for (s of sectors; track s) {
+                      <option>{{ s }}</option>
+                    }
+                  </select></label
+                ><button class="text-btn" (click)="resetFilters()">
+                  Limpiar filtros
+                </button>
+              </div>
+              <ng-container *ngTemplateOutlet="assetTable" />
+            }
+            @case ("portfolio") {
+              <div class="section-toolbar">
+                <div class="muted">Registro manual de posiciones</div>
+                <select
+                  aria-label="Divisa de la cartera"
+                  [(ngModel)]="portfolioCurrency"
+                >
+                  <option>USD</option>
+                  @for (c of portfolioCurrencies; track c) {
+                    @if (c !== "USD") {
+                      <option>{{ c }}</option>
+                    }
+                  }
+                </select>
+              </div>
+              <div class="portfolio-summary">
+                <div class="panel">
+                  <span>Valor registrado · {{ portfolioCurrency }}</span
+                  ><strong>{{
+                    portfolioComplete ? n(portfolioTotal) : "—"
+                  }}</strong
+                  ><small>Últimas cotizaciones recibidas</small>
+                </div>
+                <div class="panel">
+                  <span>Coste de adquisición</span
+                  ><strong>{{ n(portfolioCost) }}</strong
+                  ><small
+                    >{{ portfolioAssets.length }} posiciones en
+                    {{ portfolioCurrency }}</small
+                  >
+                </div>
+                <div class="panel">
+                  <span>Resultado no realizado</span
+                  ><strong
+                    [class.up]="portfolioTotal >= portfolioCost"
+                    [class.down]="portfolioTotal < portfolioCost"
+                    >{{
+                      portfolioComplete
+                        ? n(portfolioTotal - portfolioCost)
+                        : "—"
+                    }}</strong
+                  ><small>Sin comisiones ni dividendos</small>
+                </div>
+              </div>
+              <form class="entry-form panel" (ngSubmit)="addPosition()">
+                <label
+                  >Activo<select
+                    name="positionSymbol"
+                    [(ngModel)]="positionSymbol"
+                  >
+                    @for (a of assets; track a.symbol) {
+                      <option [value]="a.symbol">
+                        {{ a.symbol }} · {{ a.name }}
+                      </option>
+                    }
+                  </select></label
+                ><label
+                  >Unidades<input
+                    name="quantity"
+                    type="number"
+                    min="0.00000001"
+                    step="any"
+                    [(ngModel)]="quantity"
+                    required /></label
+                ><label
+                  >Coste unitario<input
+                    name="cost"
+                    type="number"
+                    min="0.00000001"
+                    step="any"
+                    [(ngModel)]="cost"
+                    required /></label
+                ><button class="primary" type="submit">
+                  <t-icon name="plus" />Añadir posición
+                </button>
+              </form>
+              <div class="table-panel panel">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Activo</th>
+                      <th>Unidades</th>
+                      <th>Coste</th>
+                      <th>Último</th>
+                      <th>Valor</th>
+                      <th>Resultado</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (p of portfolioAssets; track p.id) {
+                      <tr>
+                        <td>
+                          <button
+                            class="asset-cell"
+                            (click)="open('chart', p.symbol)"
+                          >
+                            <b>{{ p.symbol }}</b
+                            ><small>{{ assetFor(p.symbol).name }}</small>
+                          </button>
+                        </td>
+                        <td>{{ n(p.quantity, 4) }}</td>
+                        <td>
+                          {{ n(p.cost)
+                          }}<small>{{
+                            p.currency ?? currencyFor(p.symbol)
+                          }}</small>
+                        </td>
+                        <td>
+                          {{ n(quotes[p.symbol]?.price)
+                          }}<small>{{ currencyFor(p.symbol) }}</small>
+                        </td>
+                        <td>
+                          {{ n(positionValue(p)) }}
+                        </td>
+                        <td
+                          [class.up]="(quotes[p.symbol]?.price ?? 0) >= p.cost"
+                          [class.down]="(quotes[p.symbol]?.price ?? 0) < p.cost"
+                        >
+                          {{
+                            n(
+                              positionValue(p) === undefined
+                                ? undefined
+                                : positionValue(p)! - p.quantity * p.cost
+                            )
+                          }}
+                        </td>
+                        <td>
+                          <button
+                            class="icon-btn"
+                            (click)="removePosition(p.id)"
+                            aria-label="Eliminar posición"
+                          >
+                            <t-icon name="trash" />
+                          </button>
+                        </td>
+                      </tr>
+                    } @empty {
+                      <tr>
+                        <td colspan="7" class="empty-cell">
+                          Sin posiciones en {{ portfolioCurrency }}. Añade un
+                          activo con su coste de adquisición.
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+              <p class="subtle-note">
+                Las valoraciones se agrupan por divisa. No se suman importes de
+                monedas diferentes.
+              </p>
+            }
+            @case ("alerts") {
+              <div class="notice">
+                <t-icon name="info" /><span
+                  >Las alertas se comprueban cada 60 segundos, con datos reales
+                  y mientras la aplicación esté abierta.</span
+                ><button (click)="enableNotifications()">Activar avisos</button>
+              </div>
+              <form class="entry-form panel" (ngSubmit)="addAlert()">
+                <label
+                  >Activo<select name="alertSymbol" [(ngModel)]="alertSymbol">
+                    @for (a of assets; track a.symbol) {
+                      <option [value]="a.symbol">
+                        {{ a.symbol }} · {{ a.name }}
+                      </option>
+                    }
+                  </select></label
+                ><label
+                  >Condición<select
+                    name="direction"
+                    [(ngModel)]="alertDirection"
+                  >
+                    <option value="above">Precio ≥ nivel</option>
+                    <option value="below">Precio ≤ nivel</option>
+                  </select></label
+                ><label
+                  >Nivel<input
+                    name="price"
+                    type="number"
+                    min="0.00000001"
+                    step="any"
+                    [(ngModel)]="alertPrice"
+                    required /></label
+                ><button class="primary" type="submit">
+                  <t-icon name="plus" />Crear alerta
+                </button>
+              </form>
+              <div class="alert-list">
+                @for (a of ws.alerts; track a.id) {
+                  <div class="panel alert-row">
+                    <div class="alert-icon"><t-icon name="bell" /></div>
+                    <button
+                      class="asset-cell"
+                      (click)="open('chart', a.symbol)"
+                    >
+                      <b>{{ a.symbol }}</b
+                      ><small>{{ assetFor(a.symbol).name }}</small>
+                    </button>
+                    <div>
+                      {{ a.direction === "above" ? "≥" : "≤" }} {{ n(a.price) }}
+                      <small>{{ assetFor(a.symbol).currency }}</small>
+                    </div>
+                    <span class="badge" [class.triggered]="a.triggered">{{
+                      a.triggered
+                        ? "Activada"
+                        : quotes[a.symbol]
+                          ? "En seguimiento"
+                          : "Sin cotización"
+                    }}</span>
+                    @if (a.triggered) {
+                      <button class="text-btn" (click)="resetAlert(a.id)">
+                        Rearmar
+                      </button>
+                    }
+                    <button
+                      class="icon-btn"
+                      (click)="removeAlert(a.id)"
+                      aria-label="Eliminar alerta"
+                    >
+                      <t-icon name="trash" />
+                    </button>
+                  </div>
+                } @empty {
+                  <div class="empty-state panel">
+                    <t-icon name="bell" />
+                    <h2>Sin alertas</h2>
+                    <p>Selecciona un activo y un nivel de precio.</p>
+                  </div>
+                }
+              </div>
+            }
+          }
+        </main>
+        <aside class="watchlist">
+          <div class="watch-heading">
+            <h2>
+              Seguimiento <small>{{ ws.watchlist.length }}</small>
+            </h2>
+            <button
+              class="icon-btn"
+              (click)="searchOpen = true"
+              aria-label="Añadir activo al seguimiento"
+            >
+              <t-icon name="plus" />
+            </button>
+          </div>
+          <div class="watch-columns">
+            <span>SÍMBOLO</span><span>ÚLTIMO / VAR. %</span>
+          </div>
+          <div class="watch-items">
+            @for (a of watchAssets; track a.symbol) {
+              <div
+                class="watch-row"
+                [class.current]="a.symbol === active.symbol"
+                [class.quote-unavailable]="!!quoteErrors[a.symbol]"
+                [title]="quoteInfo(a.symbol)"
+              >
+                <button class="watch-asset" (click)="open('chart', a.symbol)">
+                  <span class="asset-monogram" [attr.data-kind]="a.type">{{
+                    a.symbol.replace("^", "").slice(0, 2)
+                  }}</span
+                  ><span
+                    ><b>{{ a.symbol.replace("^", "") }}</b
+                    ><small>{{ a.name }}</small></span
+                  ><span class="watch-price"
+                    ><b>{{ n(quotes[a.symbol]?.price) }}</b
+                    ><small
+                      [class.up]="
+                        !!quotes[a.symbol] && quotes[a.symbol].change >= 0
+                      "
+                      [class.down]="(quotes[a.symbol]?.change ?? 0) < 0"
+                      >{{ pct(quotes[a.symbol]?.change) }}</small
+                    ><small class="watch-stamp">{{
+                      quoteErrors[a.symbol]
+                        ? "Sin actualizar"
+                        : quotes[a.symbol]
+                          ? time(quotes[a.symbol].asOf)
+                          : "Sin cotización"
+                    }}</small></span
+                  ></button
+                ><button
+                  class="watch-remove"
+                  (click)="toggleWatch(a.symbol)"
+                  [attr.aria-label]="'Quitar ' + a.symbol + ' del seguimiento'"
+                >
+                  <t-icon name="close" />
+                </button>
+              </div>
+            } @empty {
+              <div class="empty-watch">
+                Añade activos con la estrella del buscador.
+              </div>
+            }
+          </div>
+          <button class="add-symbol" (click)="searchOpen = true">
+            <t-icon name="plus" />Añadir símbolo
+          </button>
+        </aside>
+      </div>
     </div>
-    <footer class="statusbar">
-      <span
-        ><i></i>Guardado local {{storageWarning?'no disponible':'activo'}}</span
-      ><span
-        >{{ws.mode==='demo'?'DEMO · series sintéticas':'Actualización cada 60
-        s'}} <b>•</b> {{ws.tabs.length}} pestañas</span
-      ><button (click)="exportWorkspace()">
-        <t-icon name="download" />Exportar espacio
-      </button>
-    </footer>
   </div>
-</div>
-
+}
 <ng-template #pricePanel let-isCompact="compact">
   <div class="instrument-heading">
-    <button class="instrument-name" (click)="searchOpen=true">
-      <span class="asset-monogram big"
-        >{{asset.symbol.replace('^','').slice(0,2)}}</span
+    <button class="instrument-name" (click)="searchOpen = true">
+      <span class="asset-monogram big">{{
+        asset.symbol.replace("^", "").slice(0, 2)
+      }}</span
       ><span
-        ><b>{{asset.symbol.replace('^','')}}</b
-        ><small>{{asset.name}} <span>· {{asset.exchange}}</span></small></span
+        ><b>{{ asset.symbol.replace("^", "") }}</b
+        ><small
+          >{{ asset.name }} <span>· {{ asset.exchange }}</span></small
+        ></span
       ><t-icon name="down" />
     </button>
     <div class="instrument-price">
-      <strong>{{n(currentQuote?.price)}}</strong
-      ><span class="muted">{{series?.currency??asset.currency}}</span
+      <strong>{{ n(currentQuote?.price) }}</strong
+      ><span class="muted">{{ series?.currency ?? asset.currency }}</span
       ><span
         class="change"
-        [class.up]="(currentQuote?.change??0)>=0"
-        [class.down]="(currentQuote?.change??0)<0"
-        >{{pct(currentQuote?.change)}}</span
+        [class.up]="!!currentQuote && currentQuote.change >= 0"
+        [class.down]="(currentQuote?.change ?? 0) < 0"
+        >{{ pct(currentQuote?.change) }}</span
       >
     </div>
     <button
@@ -659,26 +763,28 @@
   </div>
   <div class="chart-toolbar">
     <div class="intervals">
-      @for(i of (active.symbol==='CSV'?[]:['15m','1h','1d']);track i){<button
-        [class.on]="active.interval===i"
-        (click)="active.interval=i;changeChart()"
-      >
-        {{i==='1d'?'1D':i==='1h'?'1H':'15m'}}</button
-      >}
+      @for (i of active.symbol === "CSV" ? [] : ["15m", "1h", "1d"]; track i) {
+        <button
+          [class.on]="active.interval === i"
+          (click)="active.interval = i; changeChart()"
+        >
+          {{ i === "1d" ? "1D" : i === "1h" ? "1H" : "15m" }}
+        </button>
+      }
     </div>
     <span class="toolbar-divider"></span
     ><button
       class="icon-btn"
-      [class.on]="active.kind==='candlestick'"
-      (click)="active.kind='candlestick';changeChart()"
+      [class.on]="active.kind === 'candlestick'"
+      (click)="active.kind = 'candlestick'; changeChart()"
       title="Velas"
       aria-label="Gráfico de velas"
     >
       <t-icon name="candle" /></button
     ><button
       class="icon-btn"
-      [class.on]="active.kind==='line'"
-      (click)="active.kind='line';changeChart()"
+      [class.on]="active.kind === 'line'"
+      (click)="active.kind = 'line'; changeChart()"
       title="Línea"
       aria-label="Gráfico de línea"
     >
@@ -688,165 +794,214 @@
       <button
         class="toolbar-btn"
         [class.on]="indicatorPanel"
-        (click)="indicatorPanel=!indicatorPanel"
+        (click)="indicatorPanel = !indicatorPanel"
       >
-        <t-icon name="layers" />Indicadores<small
-          >{{active.indicators.length}}</small
-        ></button
-      >@if(indicatorPanel){
-      <div class="dropdown">
-        @for(i of indicators;track i){<button (click)="toggleIndicator(i)">
-          <span>{{i}}</span>@if(active.indicators.includes(i)){<t-icon
-            name="check"
-          />}</button
-        >}
-      </div>
+        <t-icon name="layers" />Indicadores<small>{{
+          active.indicators.length
+        }}</small>
+      </button>
+      @if (indicatorPanel) {
+        <div class="dropdown">
+          @for (i of indicators; track i) {
+            <button (click)="toggleIndicator(i)">
+              <span>{{ i }}</span>
+              @if (active.indicators.includes(i)) {
+                <t-icon name="check" />
+              }
+            </button>
+          }
+        </div>
       }
     </div>
-    @if(!isCompact){<select
-      class="compare-select"
-      [(ngModel)]="active.compare"
-      (ngModelChange)="changeChart()"
-      aria-label="Comparar activo"
-    >
-      <option value="">+ Comparar</option>
-      @for(a of assets;track a.symbol){@if(a.symbol!==active.symbol){
-      <option [value]="a.symbol">{{a.symbol}}</option>
-      }}</select
-    >}
+    @if (!isCompact) {
+      <select
+        class="compare-select"
+        [(ngModel)]="active.compare"
+        (ngModelChange)="changeChart()"
+        aria-label="Comparar activo"
+      >
+        <option value="">+ Comparar</option>
+        @for (a of assets; track a.symbol) {
+          @if (a.symbol !== active.symbol) {
+            <option [value]="a.symbol">{{ a.symbol }}</option>
+          }
+        }
+      </select>
+    }
     <div class="toolbar-spacer"></div>
+    <button
+      class="icon-btn"
+      (click)="refreshCurrent()"
+      aria-label="Actualizar gráfico"
+      [class.is-refreshing]="refreshing"
+      title="Actualizar"
+    >
+      <t-icon name="refresh" />
+    </button>
+    <button
+      class="icon-btn"
+      (click)="fullscreen()"
+      aria-label="Pantalla completa"
+      title="Pantalla completa"
+    >
+      <t-icon name="expand" />
+    </button>
     <button
       class="icon-btn"
       (click)="exportCsv()"
       aria-label="Exportar CSV"
       title="Exportar CSV"
     >
-      <t-icon name="download" /></button
-    >@if(!isCompact){<label class="icon-btn file-btn" title="Importar CSV"
-      ><t-icon name="upload" /><input
-        type="file"
-        accept=".csv,text/csv"
-        (change)="importCsv($event)"
-        aria-label="Importar CSV" /></label
-    ><button
-      class="icon-btn"
-      (click)="exportImage()"
-      aria-label="Guardar imagen PNG"
-      title="Guardar imagen PNG"
-    >
-      <t-icon name="external" /></button
-    >}
+      <t-icon name="download" />
+    </button>
+    @if (!isCompact) {
+      <label class="icon-btn file-btn" title="Importar CSV"
+        ><t-icon name="upload" /><input
+          type="file"
+          accept=".csv,text/csv"
+          (change)="importCsv($event)"
+          aria-label="Importar CSV" /></label
+      ><button
+        class="icon-btn"
+        (click)="exportImage()"
+        aria-label="Guardar imagen PNG"
+        title="Guardar imagen PNG"
+      >
+        <t-icon name="external" />
+      </button>
+    }
   </div>
   <div class="ohlc">
-    @if(lastCandle){<span>O <b>{{n(lastCandle.open)}}</b></span
-    ><span>H <b>{{n(lastCandle.high)}}</b></span
-    ><span>L <b>{{n(lastCandle.low)}}</b></span
-    ><span>C <b>{{n(lastCandle.close)}}</b></span
-    >}@for(i of active.indicators;track i){<span class="indicator-tag"
-      >{{i}}</span
-    >}
+    @if (lastCandle) {
+      <span
+        >O <b>{{ n(lastCandle.open) }}</b></span
+      ><span
+        >H <b>{{ n(lastCandle.high) }}</b></span
+      ><span
+        >L <b>{{ n(lastCandle.low) }}</b></span
+      ><span
+        >C <b>{{ n(lastCandle.close) }}</b></span
+      >
+    }
+    @for (i of active.indicators; track i) {
+      <span class="indicator-tag">{{ i }}</span>
+    }
   </div>
   <div class="chart-body" [class.compact-chart]="isCompact">
-    @if(!isCompact){
-    <div class="drawing-toolbar">
-      <button
-        class="icon-btn"
-        [class.on]="tool==='cursor'"
-        (click)="tool='cursor'"
-        title="Navegar"
-        aria-label="Navegar"
-      >
-        <t-icon name="plus" /></button
-      ><button
-        class="icon-btn"
-        [class.on]="tool==='trend'"
-        (click)="tool='trend'"
-        title="Línea de tendencia"
-        aria-label="Línea de tendencia"
-      >
-        <t-icon name="trend" /></button
-      ><button
-        class="icon-btn"
-        [class.on]="tool==='measure'"
-        (click)="tool='measure'"
-        title="Medir tramo"
-        aria-label="Medir tramo"
-      >
-        <t-icon name="ruler" />
-      </button>
-      <div class="tool-separator"></div>
-      <button
-        class="icon-btn"
-        (click)="chart?.reset()"
-        aria-label="Ver todo el período"
-        title="Ver todo el período"
-      >
-        <t-icon name="expand" /></button
-      ><button
-        class="icon-btn"
-        (click)="clearDrawings()"
-        aria-label="Borrar trazados"
-        title="Borrar trazados"
-      >
-        <t-icon name="trash" />
-      </button>
-    </div>
+    @if (!isCompact) {
+      <div class="drawing-toolbar">
+        <button
+          class="icon-btn"
+          [class.on]="tool === 'cursor'"
+          (click)="tool = 'cursor'"
+          title="Navegar"
+          aria-label="Navegar"
+        >
+          <t-icon name="plus" /></button
+        ><button
+          class="icon-btn"
+          [class.on]="tool === 'trend'"
+          (click)="tool = 'trend'"
+          title="Línea de tendencia"
+          aria-label="Línea de tendencia"
+        >
+          <t-icon name="trend" /></button
+        ><button
+          class="icon-btn"
+          [class.on]="tool === 'measure'"
+          (click)="tool = 'measure'"
+          title="Medir tramo"
+          aria-label="Medir tramo"
+        >
+          <t-icon name="ruler" />
+        </button>
+        <div class="tool-separator"></div>
+        <button
+          class="icon-btn"
+          (click)="chart?.reset()"
+          aria-label="Ver todo el período"
+          title="Ver todo el período"
+        >
+          <t-icon name="expand" /></button
+        ><button
+          class="icon-btn"
+          (click)="clearDrawings()"
+          aria-label="Borrar trazados"
+          title="Borrar trazados"
+        >
+          <t-icon name="trash" />
+        </button>
+      </div>
     }
     <div class="chart-stage">
-      @if(loading){
-      <div class="chart-loading">
-        <span class="spinner"></span>Cargando serie…
-      </div>
-      }@else if(error){
-      <div class="chart-error">
-        <t-icon name="info" /><strong>Datos no disponibles</strong>
-        <p>{{error}}</p>
-        <div>
-          <button class="primary" (click)="load()">Reintentar</button
-          ><button (click)="configure()">Configurar datos</button>
+      @if (series) {
+        <price-chart
+          [candles]="series.candles"
+          [comparison]="comparison"
+          [tab]="active"
+          [theme]="ws.theme"
+          [tool]="isCompact ? 'cursor' : tool"
+          [compact]="isCompact"
+          (drawing)="addDrawing($event)"
+          (measurement)="measurement = $event"
+          (zoomChange)="saveZoom($event)"
+        />
+      }
+      @if (loading && !series) {
+        <div class="chart-loading">
+          <span class="spinner"></span>Cargando cotización…
         </div>
-      </div>
-      }@else if(series){<price-chart
-        [candles]="series.candles"
-        [comparison]="comparison"
-        [tab]="active"
-        [theme]="ws.theme"
-        [tool]="isCompact?'cursor':tool"
-        [compact]="isCompact"
-        (drawing)="addDrawing($event)"
-        (measurement)="measurement=$event"
-        (zoomChange)="saveZoom($event)"
-      />}@else{
-      <div class="chart-error">
-        Selecciona un activo para cargar su gráfico.
-      </div>
+      }
+      @if (error && !series) {
+        <div class="chart-error">
+          <t-icon name="info" /><strong>No se ha recibido la cotización</strong>
+          <p>{{ error }}</p>
+          <button class="primary" (click)="load()">Reintentar</button>
+        </div>
+      }
+      @if (error && series) {
+        <div class="refresh-error" role="status">
+          No se ha podido actualizar · Se conserva la serie del
+          {{ time(series.asOf) }}
+          <button (click)="load(true)">Reintentar</button>
+        </div>
       }
     </div>
   </div>
   <div class="chart-source">
     <span
-      >{{series?.source??'Sin fuente'}} ·
-      {{time(series?.asOf)}}@if(series?.delay){ · Retraso comunicado:
-      {{series!.delay}} min}@else if(series&&!series.demo&&asset.type!=='Cripto'&&asset.type!=='Importado'){ · Retraso no
-      verificado}</span
-    ><span>{{measurement||'Escala automática'}}</span>
+      >{{ series?.source ?? "Sin fuente" }} ·
+      {{ series?.timeKind === "snapshot" ? "Consulta · " : ""
+      }}{{ time(series?.asOf) }}
+      @if (series && series.delay != null) {
+        · Retraso comunicado: {{ series!.delay }} min
+      } @else if(series && asset.type !== "Importado") {
+        · Retraso no verificado
+      }</span
+    ><span>{{ measurement || "Escala automática" }}</span>
   </div>
 </ng-template>
 
 <ng-template #filters
   ><div class="filterbar">
     <div class="filter-chips">
-      @for(type of types;track type){<button
-        [class.active]="category===type"
-        (click)="category=type"
-      >
-        {{type}}</button
-      >}
+      @for (type of types; track type) {
+        <button
+          [class.active]="category === type"
+          (click)="category = type; saveView()"
+        >
+          {{ type }}
+        </button>
+      }
     </div>
-    <select [(ngModel)]="country" aria-label="País o territorio">
+    <select
+      [(ngModel)]="country"
+      (ngModelChange)="saveView()"
+      aria-label="País o territorio"
+    >
       <option value="Todos">Todos los países</option>
-      @for(c of countries;track c){
-      <option>{{c}}</option>
+      @for (c of countries; track c) {
+        <option>{{ c }}</option>
       }</select
     ><button
       class="icon-btn"
@@ -861,12 +1016,15 @@
   ><section class="panel table-panel">
     <div class="table-heading">
       <h2>
-        {{filteredAssets.length}} activos
-        <small>{{country==='Todos'?'Todos los mercados':country}}</small>
+        {{ filteredAssets.length }} activos
+        <small>{{
+          country === "Todos" ? "Todos los mercados" : country
+        }}</small>
       </h2>
       <label class="table-search"
         ><t-icon name="search" /><input
           [(ngModel)]="tableQuery"
+          (ngModelChange)="saveView()"
           placeholder="Filtrar activos"
           aria-label="Filtrar activos"
       /></label>
@@ -885,257 +1043,369 @@
         </tr>
       </thead>
       <tbody>
-        @for(a of filteredAssets;track a.symbol){
-        <tr>
-          <td>
-            <button
-              class="icon-btn small"
-              [class.starred]="isWatched(a.symbol)"
-              (click)="toggleWatch(a.symbol)"
-              [attr.aria-label]="'Seguir '+a.symbol"
+        @for (a of filteredAssets; track a.symbol) {
+          <tr>
+            <td>
+              <button
+                class="icon-btn small"
+                [class.starred]="isWatched(a.symbol)"
+                (click)="toggleWatch(a.symbol)"
+                [attr.aria-label]="'Seguir ' + a.symbol"
+              >
+                <t-icon name="star" />
+              </button>
+            </td>
+            <td>
+              <button class="symbol-link" (click)="open('chart', a.symbol)">
+                {{ a.symbol.replace("^", "") }}
+              </button>
+            </td>
+            <td>
+              <button class="name-link" (click)="open('chart', a.symbol)">
+                {{ a.name }}<small>{{ a.type }}</small>
+              </button>
+            </td>
+            <td>
+              <span class="country-code">{{ a.flag }}</span
+              ><small>{{ a.exchange }}</small>
+            </td>
+            <td class="numeric">
+              {{ n(quotes[a.symbol]?.price)
+              }}<small>{{ currencyFor(a.symbol) }}</small>
+            </td>
+            <td
+              class="numeric"
+              [class.up]="!!quotes[a.symbol] && quotes[a.symbol].change >= 0"
+              [class.down]="(quotes[a.symbol]?.change ?? 0) < 0"
             >
-              <t-icon name="star" />
-            </button>
-          </td>
-          <td>
-            <button class="symbol-link" (click)="open('chart',a.symbol)">
-              {{a.symbol.replace('^','')}}
-            </button>
-          </td>
-          <td>
-            <button class="name-link" (click)="open('chart',a.symbol)">
-              {{a.name}}<small>{{a.type}}</small>
-            </button>
-          </td>
-          <td>
-            <span class="country-code">{{a.flag}}</span
-            ><small>{{a.exchange}}</small>
-          </td>
-          <td class="numeric">
-            {{n(quotes[a.symbol]?.price)}}<small>{{currencyFor(a.symbol)}}</small>
-          </td>
-          <td
-            class="numeric"
-            [class.up]="(quotes[a.symbol]?.change??0)>=0"
-            [class.down]="(quotes[a.symbol]?.change??0)<0"
-          >
-            {{pct(quotes[a.symbol]?.change)}}
-          </td>
-          <td class="numeric">{{compact(quotes[a.symbol]?.volume)}}</td>
-          <td class="data-origin">
-            <span>{{time(quotes[a.symbol]?.asOf)}}</span
-            ><small
-              >{{quotes[a.symbol]?.demo?'Sintética':quotes[a.symbol]?.source??'Sin
-              datos'}}</small
-            >
-          </td>
-        </tr>
-        }@empty{
-        <tr>
-          <td colspan="8" class="empty-cell">
-            Sin resultados para estos filtros.<button
-              class="text-btn"
-              (click)="resetFilters()"
-            >
-              Restablecer
-            </button>
-          </td>
-        </tr>
+              {{ pct(quotes[a.symbol]?.change) }}
+            </td>
+            <td class="numeric">{{ compact(quotes[a.symbol]?.volume) }}</td>
+            <td class="data-origin">
+              <span>{{ time(quotes[a.symbol]?.asOf) }}</span
+              ><small>{{ quotes[a.symbol]?.source ?? "Sin datos" }}</small>
+            </td>
+          </tr>
+        } @empty {
+          <tr>
+            <td colspan="8" class="empty-cell">
+              Sin resultados para estos filtros.<button
+                class="text-btn"
+                (click)="resetFilters()"
+              >
+                Restablecer
+              </button>
+            </td>
+          </tr>
         }
       </tbody>
     </table>
     <div class="panel-foot">
       <span>Variación respecto al cierre de la vela anterior</span
-      ><span>{{breadth.up}} al alza · {{breadth.down}} a la baja</span>
+      ><span>{{ breadth.up }} al alza · {{ breadth.down }} a la baja</span>
     </div>
   </section></ng-template
 >
 
-@if(searchOpen){
-<div class="modal-backdrop" (click)="searchOpen=false">
-  <section
-    class="search-modal"
-    role="dialog" tDialog
-    aria-modal="true"
-    aria-label="Buscar activos"
-    (click)="$event.stopPropagation()"
-  >
-    <div class="search-modal-input">
-      <t-icon name="search" /><input
-        [(ngModel)]="search"
-        (ngModelChange)="onSearch()"
-        placeholder="Símbolo, nombre o país"
-        aria-label="Símbolo, nombre o país"
-        autofocus
-      /><kbd>ESC</kbd
-      ><button
-        class="icon-btn"
-        (click)="searchOpen=false"
-        aria-label="Cerrar buscador"
-      >
-        <t-icon name="close" />
-      </button>
-    </div>
-    <div class="search-meta">
-      <span
-        >{{searchBusy?'Buscando en el proveedor…':searchResults.length+'
-        resultados'}}</span
-      ><span
-        >{{ws.mode==='demo'?'Catálogo inicial':'Catálogo y búsqueda
-        externa'}}</span
-      >
-    </div>
-    <div class="search-results">
-      @for(a of searchResults;track a.symbol){
-      <div class="search-result">
-        <button (click)="choose(a)">
-          <span class="country-code">{{a.flag}}</span
-          ><span><b>{{a.symbol}}</b><small>{{a.name}}</small></span
-          ><span class="result-market"
-            >{{a.exchange}}<small>{{a.type}} · {{a.currency}}</small></span
-          ><t-icon name="arrow" /></button
+@if (searchOpen) {
+  <div class="modal-backdrop" (click)="searchOpen = false">
+    <section
+      class="search-modal"
+      role="dialog"
+      tDialog
+      aria-modal="true"
+      aria-label="Buscar activos"
+      (click)="$event.stopPropagation()"
+    >
+      <div class="search-modal-input">
+        <t-icon name="search" /><input
+          [(ngModel)]="search"
+          (ngModelChange)="onSearch()"
+          placeholder="Símbolo, nombre o país"
+          aria-label="Símbolo, nombre o país"
+          autofocus
+        /><kbd>ESC</kbd
         ><button
           class="icon-btn"
-          [class.starred]="isWatched(a.symbol)"
-          (click)="registerAndWatch(a,$event)"
-          [attr.aria-label]="'Seguir '+a.symbol"
+          (click)="searchOpen = false"
+          aria-label="Cerrar buscador"
         >
-          <t-icon name="star" />
+          <t-icon name="close" />
         </button>
       </div>
-      }@empty{
-      <div class="empty-state">No se han encontrado activos.</div>
-      }
-    </div>
-    <div class="search-footer">
-      <span>Selecciona para abrir una pestaña</span
-      ><span>☆ Añadir al seguimiento</span>
-    </div>
-  </section>
-</div>
-} @if(settings){
-<div class="modal-backdrop" (click)="settings=false">
-  <section
-    class="settings-modal"
-    role="dialog" tDialog
-    aria-modal="true"
-    aria-label="Ajustes y cuenta"
-    (click)="$event.stopPropagation()"
-  >
-    <div class="modal-heading">
-      <h2>Ajustes y cuenta</h2>
+      <div class="search-meta">
+        <span>{{
+          searchBusy
+            ? "Buscando en el proveedor…"
+            : searchResults.length +
+              "
+        resultados"
+        }}</span
+        ><span>Acciones · índices · divisas · cripto</span>
+      </div>
+      <div class="search-results">
+        @for (a of searchResults; track a.symbol) {
+          <div class="search-result">
+            <button (click)="choose(a)">
+              <span class="country-code">{{ a.flag }}</span
+              ><span
+                ><b>{{ a.symbol }}</b
+                ><small>{{ a.name }}</small></span
+              ><span class="result-market"
+                >{{ a.exchange
+                }}<small>{{ a.type }} · {{ a.currency }}</small></span
+              ><t-icon name="arrow" /></button
+            ><button
+              class="icon-btn"
+              [class.starred]="isWatched(a.symbol)"
+              (click)="registerAndWatch(a, $event)"
+              [attr.aria-label]="'Seguir ' + a.symbol"
+            >
+              <t-icon name="star" />
+            </button>
+          </div>
+        } @empty {
+          <div class="empty-state">No se han encontrado activos.</div>
+        }
+      </div>
+      <div class="search-footer">
+        <span>Selecciona para abrir una pestaña</span
+        ><span>☆ Añadir al seguimiento</span>
+      </div>
+    </section>
+  </div>
+}
+@if (settings) {
+  <div class="modal-backdrop" (click)="settings = false">
+    <section
+      class="settings-modal"
+      role="dialog"
+      tDialog
+      aria-modal="true"
+      aria-label="Ajustes"
+      (click)="$event.stopPropagation()"
+    >
+      <div class="modal-heading">
+        <h2>Ajustes</h2>
+        <button
+          class="icon-btn"
+          (click)="settings = false"
+          aria-label="Cerrar ajustes"
+        >
+          <t-icon name="close" />
+        </button>
+      </div>
+      <div class="settings-content">
+        <section>
+          <h3>Apariencia</h3>
+          <label
+            >Tema<select
+              [(ngModel)]="ws.theme"
+              (ngModelChange)="applyTheme(); save()"
+            >
+              <option value="dark">Oscuro</option>
+              <option value="light">Claro</option>
+            </select></label
+          >
+        </section>
+        <section>
+          <h3>Espacio de trabajo</h3>
+          <div class="settings-buttons">
+            <button (click)="exportWorkspace()">
+              <t-icon name="download" />Exportar copia</button
+            ><label class="button"
+              ><t-icon name="upload" />Importar copia<input
+                type="file"
+                accept=".json,application/json"
+                (change)="importWorkspace($event)" /></label
+            ><button (click)="newWindow(); settings = false">
+              <t-icon name="external" />Nueva ventana
+            </button>
+          </div>
+        </section>
+        <section class="settings-privacy">
+          <a href="privacy.html" target="_blank" rel="noopener noreferrer"
+            >Privacidad<t-icon name="external"
+          /></a>
+        </section>
+      </div>
+    </section>
+  </div>
+}
+@if (about) {
+  <div class="modal-backdrop" (click)="about = false">
+    <section
+      class="about-modal"
+      role="dialog"
+      tDialog
+      aria-modal="true"
+      aria-label="Acerca de Trader"
+      (click)="$event.stopPropagation()"
+    >
+      <div class="modal-heading">
+        <h2>Acerca de</h2>
+        <button
+          class="icon-btn"
+          (click)="about = false"
+          aria-label="Cerrar acerca de"
+        >
+          <t-icon name="close" />
+        </button>
+      </div>
+      <div class="about-content">
+        <div class="about-brand">
+          <img src="favicon.svg" alt="" />
+          <div>
+            <h2>Trader</h2>
+            <span>Versión 0.2.0</span>
+          </div>
+        </div>
+        <p>
+          Consulta y análisis de mercados financieros. Gráficos, indicadores
+          técnicos y espacios de trabajo personales.
+        </p>
+        <p>
+          Un proyecto personal de iniciativa privada, creado y desarrollado por
+          <strong>Alejandro Pico</strong>.
+        </p>
+        <nav class="about-links" aria-label="Enlaces del proyecto">
+          <a
+            href="https://alejandropico.github.io/Portfolio/"
+            target="_blank"
+            rel="noopener noreferrer"
+            ><span>Autor</span><strong>Alejandro Pico · Portfolio</strong
+            ><t-icon name="external" /></a
+          ><a
+            href="https://github.com/AlejandroPico/Trader"
+            target="_blank"
+            rel="noopener noreferrer"
+            ><span>Código fuente</span><strong>Trader · GitHub</strong
+            ><t-icon name="external"
+          /></a>
+        </nav>
+        <div class="about-spectrum" aria-hidden="true">
+          <i></i><i></i><i></i><i></i><i></i>
+        </div>
+      </div>
+    </section>
+  </div>
+}
+@if (accountOpen) {
+  <div class="account-shade" (click)="accountOpen = false"></div>
+  <section class="account-popover" role="dialog" tDialog aria-label="Cuenta">
+    <div class="account-heading">
+      <h2>Cuenta</h2>
       <button
         class="icon-btn"
-        (click)="settings=false"
-        aria-label="Cerrar ajustes"
+        (click)="accountOpen = false"
+        aria-label="Cerrar cuenta"
       >
         <t-icon name="close" />
       </button>
     </div>
-    <div class="settings-content"><section><h3>Apariencia</h3><label>Tema<select [(ngModel)]="ws.theme" (ngModelChange)="applyTheme();save()"><option value="dark">Oscuro</option><option value="light">Claro</option></select></label></section>
-      <section>
-        <h3>Datos de mercado</h3>
-        <div class="segmented">
+    @if (cloud.user) {
+      <div class="account-identity">
+        @if (cloud.user.photoURL) {
+          <img
+            [src]="cloud.user.photoURL"
+            alt=""
+            referrerpolicy="no-referrer"
+          />
+        }
+        <div>
+          <strong>{{ cloud.user.displayName }}</strong
+          ><small>{{ cloud.user.email }}</small>
+        </div>
+      </div>
+      <div class="sync-status">{{ cloud.status }}</div>
+      @if (cloud.error) {
+        <p class="account-error" role="alert">{{ cloud.error }}</p>
+        <button class="text-btn" (click)="cloud.retry()">
+          Reintentar sincronización
+        </button>
+      }
+      <div class="profile-list">
+        <h3>Perfiles</h3>
+        @for (profile of cloud.profiles; track profile.id) {
           <button
-            [class.active]="ws.mode==='demo'"
-            (click)="switchMode('demo')"
+            [class.active]="cloud.profile === profile.id"
+            [disabled]="cloud.busy || !cloud.syncReady"
+            (click)="cloud.switchProfile(profile.id)"
           >
-            Demostración</button
-          ><button
-            [class.active]="ws.mode==='live'"
-            (click)="switchMode('live')"
-          >
-            Proveedores reales
+            <t-icon name="layers" /><span>{{ profile.name }}</span>
+            @if (cloud.profile === profile.id) {
+              <t-icon name="check" />
+            }
           </button>
-        </div>
-        <label
-          >Servidor de datos<input
-            [(ngModel)]="apiDraft"
-            placeholder="http://127.0.0.1:8765"
-            type="url"
-        /></label>
-        <p>
-          Acciones, índices, divisas y futuros utilizan el servicio Python. Las
-          criptomonedas consultan el mercado spot público de Binance. La
-          disponibilidad y el retraso dependen del proveedor.
-        </p>
-      </section>
-      <section>
-        <h3><t-icon name="cloud" />Cuenta de Google</h3>
-        <label
-          >ID de cliente OAuth<input
-            [(ngModel)]="clientDraft"
-            placeholder="…apps.googleusercontent.com"
-        /></label>
-        <p>
-          Configura el origen web autorizado y activa Google Drive API. El
-          espacio se guarda en la carpeta privada de datos de esta aplicación.
-          Guarda los ajustes antes de conectar.
-        </p>
-        @if(cloud.email){
-        <div class="connected-account">
-          <t-icon name="check" />{{cloud.email}}<button
-            class="text-btn"
-            (click)="cloud.disconnect()"
-          >
-            Desconectar
-          </button>
-        </div>
-        <div class="button-row">
-          <button [disabled]="cloudBusy" (click)="cloudSave()">
-            <t-icon name="upload" />Guardar en Google</button
-          ><button [disabled]="cloudBusy" (click)="cloudLoad()">
-            <t-icon name="download" />Recuperar de Google
-          </button>
-        </div>
-        <p>
-          Recuperar sustituye este espacio local. Guardar sustituye la copia de
-          Google. Exporta una copia antes de reemplazarlo.
-        </p>
-        }@else{<button
-          class="google-btn"
-          [disabled]="cloudBusy||nativeSyncBusy"
-          (click)="connect()"
+        }
+      </div>
+      <form class="profile-create" (ngSubmit)="createProfile()">
+        <input
+          name="profileName"
+          [(ngModel)]="profileName"
+          placeholder="Nombre del perfil"
+          aria-label="Nombre del nuevo perfil"
+          maxlength="80"
+        /><button
+          type="submit"
+          [disabled]="!profileName.trim() || cloud.busy || !cloud.syncReady"
+          aria-label="Crear perfil"
+          title="Crear perfil con las vistas actuales"
         >
-          <b>G</b>{{nativeDesktop?(nativeSyncBusy?'Esperando al navegador…':'Sincronizar en el navegador'):cloudBusy?'Conectando…':'Conectar con Google'}}</button
-        >}
-        <p class="subtle-note">
-          En la aplicación de escritorio utiliza el navegador para sincronizar;
-          el acceso de Google no admite navegadores integrados.
+          <t-icon name="plus" />
+        </button>
+      </form>
+      <button class="signout" (click)="signOut()">Cerrar sesión</button>
+    } @else {
+      <button
+        class="google-signin"
+        (click)="connect()"
+        [disabled]="
+          !cloud.configured || !cloud.available || cloud.busy || nativeSyncBusy
+        "
+      >
+        <ng-container *ngTemplateOutlet="googleBrand" />Continuar con Google
+      </button>
+      @if (!cloud.configured) {
+        <p class="account-note">
+          El acceso con Google todavía no está activado por el propietario.
         </p>
-      </section>
-      <section>
-        <h3>Copias y ventanas</h3>
-        <div class="button-row">
-          <button (click)="exportWorkspace()">
-            <t-icon name="download" />Exportar espacio</button
-          ><label class="button file-btn"
-            ><t-icon name="upload" />Importar espacio<input
-              type="file"
-              accept=".json"
-              (change)="importWorkspace($event)" /></label
-          ><button (click)="newWindow()">
-            <t-icon name="external" />Nueva ventana
-          </button>
-        </div>
-        <p>
-          Se guardan pestañas, indicadores, trazados, seguimiento, cartera y
-          alertas. Los archivos CSV permanecen en la sesión y deben importarse
-          de nuevo al abrir.
+      } @else {
+        <p class="account-note">
+          Tus perfiles y vistas se sincronizan al iniciar sesión.
         </p>
-      </section>
-    </div>
-    <div class="modal-footer">
-      <button (click)="settings=false">Cerrar</button
-      ><button class="primary" (click)="saveSettings()">Guardar ajustes</button>
-    </div>
+      }
+      @if (cloud.error) {
+        <p class="account-error" role="alert">{{ cloud.error }}</p>
+      }
+    }
   </section>
-</div>
-} @if(toast){
-<div class="toast" role="status">
-  <t-icon name="info" /><span>{{toast}}</span
-  ><button class="icon-btn" (click)="toast=''" aria-label="Cerrar aviso">
-    <t-icon name="close" />
-  </button>
-</div>
 }
+@if (toast) {
+  <div class="toast" role="status">
+    <t-icon name="info" /><span>{{ toast }}</span
+    ><button class="icon-btn" (click)="toast = ''" aria-label="Cerrar aviso">
+      <t-icon name="close" />
+    </button>
+  </div>
+}
+
+<ng-template #googleBrand
+  ><svg viewBox="0 0 48 48" aria-hidden="true">
+    <path
+      fill="#4285f4"
+      d="M43.6 20.5H24v8h11.3c-1.1 6-5.7 8.8-11.3 8.8A13.3 13.3 0 1 1 33.4 14l5.9-5.8A21.6 21.6 0 1 0 24 45.6c12.5 0 20.7-8.8 20.7-21.2 0-1.5-.2-2.7-.4-3.9z"
+    />
+    <path
+      fill="#34a853"
+      d="M24 45.6c6 0 11-2 14.7-5.4l-6.7-5.3c-2.2 1.5-4.8 2.4-8 2.4-5.8 0-10.7-3.8-12.6-9l-6.9 5.3A21.6 21.6 0 0 0 24 45.6z"
+    />
+    <path
+      fill="#fbbc05"
+      d="M11.4 28.3a13.7 13.7 0 0 1 0-8.6l-6.9-5.3a21.6 21.6 0 0 0 0 19.2z"
+    />
+    <path
+      fill="#ea4335"
+      d="M24 10.7c3.8 0 7.1 1.3 9.4 3.3l5.9-5.8A21.6 21.6 0 0 0 4.5 14.4l6.9 5.3c1.9-5.2 6.8-9 12.6-9z"
+    /></svg
+></ng-template>

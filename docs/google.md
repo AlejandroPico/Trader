@@ -1,69 +1,50 @@
-# Activar la sincronización con Google
+# Activar Google y la sincronización
 
-Google necesita un identificador para reconocer a Trader. Se crea una vez en tu cuenta de Google Cloud. No es una contraseña ni una clave privada. La aplicación funciona sin él; solo la sincronización depende de este paso.
+Esta configuración la realiza el propietario una vez. Los usuarios acceden desde el círculo de cuenta y pulsan **Continuar con Google**. Sus perfiles, pestañas, seguimiento, preferencias y trazados se guardan automáticamente en su cuenta.
 
-## Crear el proyecto y habilitar Drive
+## 1. Crear el proyecto
 
-1. Entrar en [Google Cloud Console](https://console.cloud.google.com/).
-2. Abrir el selector de proyectos superior y elegir **Nuevo proyecto**. Llamarlo **Trader** y crearlo, o seleccionar uno propio existente.
-3. Abrir **APIs y servicios → Biblioteca**, buscar **Google Drive API** y pulsar **Habilitar** dentro del mismo proyecto.
+1. Abre [Firebase Console](https://console.firebase.google.com/) con tu cuenta de Google.
+2. Pulsa **Crear un proyecto**, llámalo **Trader** y completa el asistente. Google Analytics es opcional y no lo utiliza esta aplicación.
+3. Dentro del proyecto, abre el engranaje → **Configuración del proyecto** → **General**.
+4. En **Tus aplicaciones**, pulsa el icono web **</>**, registra una aplicación llamada **Trader** y copia el bloque `firebaseConfig` que aparece. No hace falta activar Firebase Hosting.
 
-## Preparar el consentimiento
+Puedes enviarme ese bloque para preparar las variables del despliegue. Es la configuración pública de la aplicación; no es una contraseña. **No hace falta generar ni enviar claves privadas, archivos de cuentas de servicio ni contraseñas.**
 
-1. Abrir **Google Auth Platform**. Si aparece **Comenzar**, completar el asistente.
-2. En **Branding / Información de la aplicación**, indicar **Trader**, tu correo de soporte y tu correo de contacto.
-3. Página de inicio, si la pide: `https://alejandropico.github.io/Trader/`.
-4. Privacidad: `https://alejandropico.github.io/Trader/privacy.html`.
-5. En **Audience / Público**, seleccionar el público adecuado. Para una cuenta personal, normalmente corresponde **Externo**.
-6. Mientras se configura, mantener el modo de pruebas y añadir tu propio correo a **Usuarios de prueba**, si el apartado lo solicita.
-7. En **Data Access / Acceso a los datos**, añadir `openid`, el permiso de correo (`email` o `https://www.googleapis.com/auth/userinfo.email`) y `https://www.googleapis.com/auth/drive.appdata`.
+## 2. Activar el acceso de Google
 
-`drive.appdata` permite guardar el espacio en la carpeta privada de esta aplicación; no concede acceso general a tus documentos de Drive.
+1. En el menú de Firebase, abre **Compilación / Build → Authentication → Comenzar**.
+2. En **Método de inicio de sesión / Sign-in method**, selecciona **Google**, actívalo, selecciona tu correo de soporte y guarda.
+3. En **Authentication → Configuración → Dominios autorizados**, añade `alejandropico.github.io`.
+4. Para desarrollo y escritorio, añade también `localhost` y `127.0.0.1`. Si usas otro dominio para la web, añádelo aquí, sin protocolo ni ruta.
 
-## Crear el cliente
+## 3. Activar el almacenamiento de perfiles
 
-1. Abrir **Clients / Clientes → Crear cliente**.
-2. Elegir **Aplicación web**. Se utiliza también para el escritorio porque su conexión se realiza en el navegador habitual.
-3. Nombre: **Trader web**.
-4. En **Orígenes autorizados de JavaScript**, añadir los que vayas a usar, cada uno en una fila:
+1. Abre **Compilación / Build → Firestore Database → Crear base de datos**.
+2. Elige la base predeterminada `(default)`, la edición estándar y una ubicación europea. Empieza con reglas de producción.
+3. Abre la pestaña **Reglas**, sustituye su contenido por el archivo [`firestore.rules`](../firestore.rules) del repositorio y pulsa **Publicar**.
 
-```text
-https://alejandropico.github.io
-http://localhost
-http://localhost:4200
-http://127.0.0.1:4200
-http://127.0.0.1:8765
-```
+Las reglas limitan los perfiles a su propietario autenticado. No uses reglas que permitan leer o escribir a cualquier visitante.
 
-Los orígenes no llevan `/Trader/`, rutas ni barra final. Si se usa otro dominio, añadir su origen HTTPS.
+## 4. Conectar el despliegue
 
-5. El flujo actual usa una ventana emergente; no necesita URI de redirección.
-6. Crear y copiar **ID de cliente**, terminado en `.apps.googleusercontent.com`.
+1. En [Trader → Settings → Secrets and variables → Actions → Variables](https://github.com/AlejandroPico/Trader/settings/variables/actions), crea la variable de repositorio `TRADER_FIREBASE_CONFIG` con el objeto de configuración en formato JSON. Si me envías el bloque del paso 1, puedo prepararlo y configurar esta parte.
+2. En **Actions**, ejecuta **Publicar web** y **Crear escritorio**. Ambos incorporan la misma configuración pública.
+3. Para desarrollo local, copia `.env.example` a `.env.local`, asigna `TRADER_FIREBASE_CONFIG` con el mismo JSON y reinicia `npm start`.
+4. Si alojas todo el producto en el servidor Python, añade allí la variable de entorno con el mismo nombre. También puede usar la configuración incluida en el paquete compilado.
 
-No compartir el secreto de cliente, la contraseña de Google, códigos de verificación ni tokens. Si la consola muestra un secreto, no adjuntarlo al chat ni al repositorio.
+La configuración se publica con el producto. Los límites de acceso los imponen Google y las reglas de Firestore; no deben guardarse claves administrativas en la aplicación.
 
-## Activarlo en Trader
+## 5. Comprobar el resultado
 
-1. Abrir **Ajustes y cuenta**, pegar el ID en **ID de cliente OAuth** y pulsar **Guardar ajustes**.
-2. Volver a Ajustes y pulsar **Conectar con Google**.
-3. Elegir personalmente la cuenta y revisar los permisos en la ventana oficial de Google.
-4. Probar **Guardar en Google**. Antes de recuperar sobre cambios locales, usar **Exportar espacio** para conservar una copia.
+1. Abre Trader, pulsa el círculo de cuenta y **Continuar con Google**. Se abre el selector oficial de Google.
+2. Añade un activo, abre un gráfico y espera a que la cuenta muestre **Sincronizado**.
+3. Abre otro navegador e inicia sesión con la misma cuenta. Deben recuperarse las pestañas, el seguimiento y las preferencias.
+4. Crea otro perfil desde la cuenta y comprueba que conserva su espacio por separado.
+5. En escritorio, el acceso se realiza en el navegador habitual y regresa automáticamente a la aplicación al terminar.
 
-En escritorio: pulsar **Sincronizar en el navegador**, conectar y guardar o recuperar allí. Después cerrar Ajustes y pulsar **Devolver al escritorio**. Mantener Trader abierto. Si pasan más de diez minutos, iniciar otra conexión desde el escritorio.
+No se ha podido ejecutar esta prueba real porque todavía no existe una configuración de Firebase proporcionada por el propietario. El botón indica esta situación y no concede una sesión ficticia.
 
-El guardado es manual. La sesión de Google caduca y puede requerir volver a conectar.
+Los cambios pendientes se conservan en el equipo y se vuelven a enviar al recuperar la conexión. Si dos navegadores editan a la vez el mismo elemento del perfil, prevalece el último guardado; no es un editor colaborativo. Las importaciones CSV permanecen en la sesión del equipo y no se suben.
 
-## Qué adjuntar para cerrar la comprobación
-
-Solo el **ID de cliente OAuth**, terminado en `.apps.googleusercontent.com`. Confirma también que Drive API está habilitada y que tu cuenta puede usar la aplicación en pruebas. La autenticación y la aceptación de permisos las realizas personalmente en Google.
-
-## Resolver errores
-
-- **Origen no autorizado:** revisar protocolo, nombre y puerto de la barra del navegador y añadir ese origen exacto.
-- **Usuario no permitido:** revisar el público y los usuarios de prueba.
-- **Drive API deshabilitada:** habilitarla dentro del proyecto del cliente.
-- **Ventana bloqueada:** permitir la ventana emergente de Google para Trader y volver a conectar.
-- **Permiso insuficiente:** comprobar `drive.appdata` y conectar de nuevo.
-- **Sesión caducada:** volver a conectar antes de guardar o recuperar.
-
-Los nombres de apartados pueden variar según el idioma. Referencias oficiales: [configuración de Google Identity](https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid), [autorización web](https://developers.google.com/identity/oauth2/web/guides/use-token-model) y [datos privados de aplicación en Drive](https://developers.google.com/workspace/drive/api/guides/appdata).
+Referencias oficiales: [Google en Firebase Authentication](https://firebase.google.com/docs/auth/web/google-signin), [reglas de seguridad de Firestore](https://firebase.google.com/docs/firestore/security/rules-conditions) y [almacenamiento sin conexión](https://firebase.google.com/docs/firestore/manage-data/enable-offline).

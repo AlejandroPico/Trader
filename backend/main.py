@@ -3,6 +3,7 @@ import asyncio
 from collections import OrderedDict
 from contextlib import asynccontextmanager
 import math
+import json
 import os
 from pathlib import Path
 import re
@@ -16,7 +17,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-from backend.desktop_sync import router as sync_router
+from backend.desktop_auth import router as auth_router
 
 SYMBOL = re.compile(r"^[A-Za-z0-9^=._\-]{1,40}$")
 INTERVALS = {"1d": "2y", "1h": "1mo", "15m": "5d"}
@@ -31,11 +32,13 @@ async def lifespan(app: FastAPI):
         yield
 
 
-app = FastAPI(title="Trader · Datos de mercado", version="0.1.0", lifespan=lifespan)
-app.include_router(sync_router)
+app = FastAPI(title="Trader · Datos de mercado", version="0.2.0", lifespan=lifespan)
+app.include_router(auth_router)
 origins = os.getenv("TRADER_ORIGINS", "http://127.0.0.1:4200,http://localhost:4200,http://127.0.0.1:8765,https://alejandropico.github.io").split(",")
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["GET"], allow_headers=[], allow_credentials=False)
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=os.getenv("TRADER_HOSTS", "127.0.0.1,localhost,testserver").split(","))
+allowed_hosts = os.getenv('TRADER_HOSTS', '127.0.0.1,localhost,testserver').split(',')
+if os.getenv('RENDER_EXTERNAL_HOSTNAME'): allowed_hosts.append(os.environ['RENDER_EXTERNAL_HOSTNAME'])
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 
 
 @app.middleware("http")
@@ -86,22 +89,39 @@ def normalize_chart(raw: dict):
     for i, timestamp in enumerate(item.get("timestamp", [])):
         try:
             o, h, low, close = [float(bars[k][i]) for k in ("open", "high", "low", "close")]
-            volume = float((bars.get("volume") or [0] * (i + 1))[i] or 0)
-            if not all(math.isfinite(n) for n in (o, h, low, close, volume)) or low > min(o, close) or h < max(o, close):
+            volumes = bars.get('volume') or []
+            volume = float(volumes[i]) if i < len(volumes) and volumes[i] is not None else None
+            if volume is not None and (not math.isfinite(volume) or volume < 0): volume = None
+            if not all(math.isfinite(n) for n in (o, h, low, close)) or low > min(o, close) or h < max(o, close):
                 continue
-            candles.append({"time": int(timestamp) * 1000, "open": o, "high": h, "low": low, "close": close, "volume": max(0, volume)})
+            candles.append({"time": int(timestamp) * 1000, "open": o, "high": h, "low": low, "close": close, "volume": volume})
         except (TypeError, ValueError, KeyError, IndexError):
             continue
     candles = sorted({c["time"]: c for c in candles}.values(), key=lambda c: c["time"])
     if len(candles) < 2:
         raise HTTPException(404, "No hay suficientes velas válidas para representar la serie.")
     meta = item.get("meta", {})
-    return {"candles": candles, "source": "Yahoo Finance · " + str(meta.get("exchangeName", "mercado")), "asOf": int(meta.get("regularMarketTime") or candles[-1]["time"] / 1000) * 1000, "fetchedAt": int(time.time() * 1000), "demo": False, "currency": meta.get("currency", ""), "delay": meta.get("exchangeDataDelayedBy")}
+    return {"candles": candles, "source": "Yahoo Finance · " + str(meta.get("exchangeName", "mercado")), "asOf": int(meta.get("regularMarketTime") or candles[-1]["time"] / 1000) * 1000, "fetchedAt": int(time.time() * 1000), "currency": meta.get("currency", ""), "delay": meta.get("exchangeDataDelayedBy")}
 
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "version": "0.1.0", "providers": ["Yahoo Finance (interfaz no oficial)", "Binance (consulta directa desde el cliente)"]}
+    return {"status": "ok", "version": "0.2.0", "providers": ["Yahoo Finance (interfaz no oficial)", "Binance (consulta directa desde el cliente)"]}
+
+
+@app.get('/app-config.json')
+async def runtime_config():
+    raw = os.getenv('TRADER_FIREBASE_CONFIG', '').strip()
+    base = {'sameOriginMarketApi':True}
+    if not raw:
+        try: raw=json.dumps(json.loads((web/'app-config.json').read_text(encoding='utf-8')).get('firebase',{}))
+        except (OSError,ValueError): return base
+    try:
+        value = json.loads(raw)
+        required = ('apiKey','authDomain','projectId','appId')
+        if not all(isinstance(value.get(key),str) and value[key] for key in required): return base
+        return {**base,'firebase':{key:value[key] for key in (*required,'storageBucket','messagingSenderId') if isinstance(value.get(key),str)}}
+    except (ValueError,TypeError,AttributeError): return base
 
 
 @app.get("/api/history")
@@ -116,7 +136,20 @@ async def history(symbol: str = Query(min_length=1, max_length=40), interval: st
             return data
         raw = await upstream("/v8/finance/chart/" + quote(symbol, safe=""), {"interval": interval, "range": INTERVALS[interval], "includePrePost": "false"})
         data = normalize_chart(raw)
-        remember(key, data, 60)
+        remember(key, data, 30)
+        return data
+
+
+@app.get('/api/quote')
+async def market_quote(symbol: str = Query(min_length=1, max_length=40)):
+    if not SYMBOL.fullmatch(symbol): raise HTTPException(422, 'Símbolo no válido.')
+    key = 'quote:' + symbol
+    if (data := recalled(key)) is not None: return data
+    async with semaphore:
+        if (data := recalled(key)) is not None: return data
+        raw = await upstream('/v8/finance/chart/' + quote(symbol, safe=''), {'interval': '1d', 'range': '5d', 'includePrePost': 'false'})
+        data = normalize_chart(raw)
+        remember(key, data, 30)
         return data
 
 
@@ -137,9 +170,23 @@ async def search(q: str = Query(min_length=2, max_length=80)):
             symbol = item.get("symbol", "")
             if not SYMBOL.fullmatch(symbol) or item.get("quoteType") not in kinds:
                 continue
-            country, flag = EXCHANGES.get(item.get("exchange"), ("Global", "WW"))
-            data.append({"symbol": symbol, "name": item.get("shortname") or item.get("longname") or symbol, "country": country, "flag": flag, "exchange": item.get("exchDisp") or item.get("exchange") or "", "type": kinds[item["quoteType"]], "currency": item.get("currency") or "—", "sector": item.get("sector") or "Otros", "seed": 100, "weight": 10})
+            country, flag = EXCHANGES.get(item.get("exchange"), ("Sin país identificado", "—"))
+            data.append({"symbol": symbol, "name": item.get("shortname") or item.get("longname") or symbol, "country": country, "flag": flag, "exchange": item.get("exchDisp") or item.get("exchange") or "", "type": kinds[item["quoteType"]], "currency": item.get("currency") or "—", "sector": item.get("sector") or "Otros"})
         remember(key, data, 300)
+        return data
+
+
+@app.get('/api/classification')
+async def classification(symbol: str = Query(min_length=1, max_length=40)):
+    if not SYMBOL.fullmatch(symbol): raise HTTPException(422, 'Símbolo no válido.')
+    key = 'classification:' + symbol
+    if (data := recalled(key)) is not None: return data
+    async with semaphore:
+        raw = await upstream('/v1/finance/search', {'q':symbol,'quotesCount':10,'newsCount':0})
+        exact = next((q for q in raw.get('quotes',[]) if q.get('symbol') == symbol), None)
+        if exact is None: raise HTTPException(404, 'No se ha recibido la clasificación de ese activo.')
+        data = {'symbol':symbol,'sector':exact.get('sector') or None,'industry':exact.get('industry') or None,'source':'Yahoo Finance'}
+        remember(key,data,86400)
         return data
 
 

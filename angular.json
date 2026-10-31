@@ -13,7 +13,7 @@
             "index": "src/index.html",
             "tsConfig": "tsconfig.json",
             "assets": [{ "glob": "**/*", "input": "public" }],
-            "styles": ["src/styles.css"],
+            "styles": ["src/styles.css", "src/terminal.css"],
             "outputPath": "dist/trader",
             "serviceWorker": "ngsw-config.json"
           },

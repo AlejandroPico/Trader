@@ -2,12 +2,16 @@ name: Publicar web
 on:
   push:
     branches: [main]
+    paths-ignore: ["**/*.md", "docs/**"]
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
   group: pages
   cancel-in-progress: true
+env:
+  TRADER_API_URL: ${{ vars.TRADER_API_URL }}
+  TRADER_FIREBASE_CONFIG: ${{ vars.TRADER_FIREBASE_CONFIG }}
 jobs:
   build:
     runs-on: ubuntu-latest

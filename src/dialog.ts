@@ -39,6 +39,11 @@ export class DialogFocus implements AfterViewInit, OnDestroy {
     }
   }
   ngOnDestroy() {
-    queueMicrotask(() => this.previous?.focus());
+    queueMicrotask(() =>
+      (this.previous?.isConnected
+        ? this.previous
+        : document.querySelector<HTMLElement>(".app-menu")
+      )?.focus(),
+    );
   }
 }

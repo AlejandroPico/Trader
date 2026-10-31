@@ -1,6 +1,6 @@
 {
   "name": "trader",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,7 +8,11 @@
     "build": "ng build",
     "build:pages": "ng build --base-href /Trader/",
     "icons": "node scripts/icons.mjs",
-    "test": "node --experimental-strip-types --test tests/analysis.test.ts"
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "config": "node --env-file-if-exists=.env.local scripts/config.mjs",
+    "prestart": "npm run config",
+    "prebuild": "npm run config",
+    "prebuild:pages": "npm run config"
   },
   "engines": {
     "node": ">=24.15.0 <25 || >=26.0.0"
@@ -21,7 +25,10 @@
     "@angular/platform-browser": "22.2.4",
     "@angular/service-worker": "22.2.4",
     "@fontsource/dm-sans": "5.3.0",
+    "d3-geo": "3.1.1",
     "echarts": "6.1.0",
+    "firebase": "13.1.0",
+    "i18n-iso-countries": "7.14.0",
     "rxjs": "7.8.2",
     "topojson-client": "3.1.0",
     "tslib": "2.8.1",
@@ -31,6 +38,7 @@
     "@angular/build": "22.2.5",
     "@angular/cli": "22.2.5",
     "@angular/compiler-cli": "22.2.4",
+    "@types/d3-geo": "3.1.1",
     "@types/topojson-client": "3.1.5",
     "prettier": "3.9.10",
     "sharp": "0.35.5",

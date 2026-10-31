@@ -2,10 +2,14 @@ name: Crear escritorio
 on:
   push:
     branches: [main]
+    paths-ignore: ["**/*.md", "docs/**"]
     tags: ["v*"]
   workflow_dispatch:
 permissions:
   contents: read
+env:
+  TRADER_API_URL: ${{ vars.TRADER_API_URL }}
+  TRADER_FIREBASE_CONFIG: ${{ vars.TRADER_FIREBASE_CONFIG }}
 jobs:
   package:
     strategy:
