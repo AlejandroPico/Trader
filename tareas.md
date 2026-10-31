@@ -52,7 +52,11 @@ Trabajar, confirmar y subir directamente a **main**. No crear ramas salvo petici
 - [x] Once pruebas Python: cotizaciones, clasificación, ausencia de volumen, caché, fallos, configuración pública, investigación y acceso nativo.
 - [x] Cotizaciones auténticas comprobadas para AAPL, IBEX, Toyota y Shanghái, con fuente y fecha del proveedor.
 - [x] Cerrada la comprobación visual final de menú, buscador en ventana estrecha, acerca de, cuenta, mapa, mapa de calor y refresco fallido.
-- [ ] Confirmar los flujos remotos sobre el commit de esta revisión.
+- [x] Revisión publicada en **main**, commit `0e79de1`: CI, Pages y paquetes Windows/macOS/Linux terminados correctamente.
+- [x] Paquete Windows local reconstruido y comprobado: arranque del servicio incluido, interfaz e iconos.
+- [x] Web publicada comprobada tras actualizar la versión guardada: barra compacta, ausencia de precios inventados y cotizaciones cripto auténticas. Las acciones permanecen sin datos hasta activar el servidor HTTPS del propietario.
+
+Flujos de la revisión: [CI](https://github.com/AlejandroPico/Trader/actions/runs/41186656340), [web](https://github.com/AlejandroPico/Trader/actions/runs/41186656287) y [escritorio](https://github.com/AlejandroPico/Trader/actions/runs/41186656328).
 
 ## Entorno para continuar
 
