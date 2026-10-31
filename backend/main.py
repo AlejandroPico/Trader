@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import sys
 import time
+from datetime import datetime,timezone
 from urllib.parse import quote
 
 import httpx
@@ -15,6 +16,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from backend.desktop_sync import router as sync_router
 
 SYMBOL = re.compile(r"^[A-Za-z0-9^=._\-]{1,40}$")
 INTERVALS = {"1d": "2y", "1h": "1mo", "15m": "5d"}
@@ -30,6 +32,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Trader · Datos de mercado", version="0.1.0", lifespan=lifespan)
+app.include_router(sync_router)
 origins = os.getenv("TRADER_ORIGINS", "http://127.0.0.1:4200,http://localhost:4200,http://127.0.0.1:8765,https://alejandropico.github.io").split(",")
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["GET"], allow_headers=[], allow_credentials=False)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=os.getenv("TRADER_HOSTS", "127.0.0.1,localhost,testserver").split(","))
@@ -125,6 +128,7 @@ async def search(q: str = Query(min_length=2, max_length=80)):
     key = "search:" + q.lower()
     if (data := recalled(key)) is not None:
         return data
+
     async with semaphore:
         raw = await upstream("/v1/finance/search", {"q": q, "quotesCount": 20, "newsCount": 0})
         data = []
@@ -137,6 +141,65 @@ async def search(q: str = Query(min_length=2, max_length=80)):
             data.append({"symbol": symbol, "name": item.get("shortname") or item.get("longname") or symbol, "country": country, "flag": flag, "exchange": item.get("exchDisp") or item.get("exchange") or "", "type": kinds[item["quoteType"]], "currency": item.get("currency") or "—", "sector": item.get("sector") or "Otros", "seed": 100, "weight": 10})
         remember(key, data, 300)
         return data
+
+
+@app.get('/api/news')
+async def news(symbol:str=Query(default='^GSPC',max_length=40)):
+    if not SYMBOL.fullmatch(symbol):
+        raise HTTPException(422,'Símbolo no válido.')
+    key='news:'+symbol
+    if (data:=recalled(key)) is not None:return data
+    async with semaphore:
+        raw=await upstream('/v1/finance/search',{'q':symbol,'quotesCount':0,'newsCount':12})
+        items=[]
+        for item in raw.get('news',[]):
+            link=item.get('link','')
+            if not link.startswith('https://') or not item.get('title'):continue
+            items.append({'id':item.get('uuid',link),'title':item['title'],'publisher':item.get('publisher',''),'url':link,'time':int(item.get('providerPublishTime',0))*1000})
+        data={'source':'Yahoo Finance · agregación de titulares','items':items,'fetchedAt':int(time.time()*1000)}
+        remember(key,data,300);return data
+
+
+@app.get('/api/yields')
+async def yields():
+    key='yields'
+    if (data:=recalled(key)) is not None:return data
+    async def point(symbol,label,years):
+        try:
+            async with semaphore:
+                raw=await upstream('/v8/finance/chart/'+quote(symbol,safe=''),{'interval':'1d','range':'1mo'})
+                series=normalize_chart(raw)
+            return {'symbol':symbol,'label':label,'years':years,'value':series['candles'][-1]['close'],'previous':series['candles'][-2]['close'],'asOf':series['asOf'],'previousTime':series['candles'][-2]['time']}
+        except HTTPException:return {'symbol':symbol,'label':label,'years':years,'value':None,'previous':None,'asOf':None,'previousTime':None}
+    points=await asyncio.gather(point('^IRX','13 semanas',.25),point('^FVX','5 años',5),point('^TNX','10 años',10),point('^TYX','30 años',30))
+    if not any(p['value'] is not None for p in points):raise HTTPException(502,'No se han podido consultar los rendimientos.')
+    data={'points':points,'source':'Índices de rendimiento de Cboe · Yahoo Finance','fetchedAt':int(time.time()*1000),'unit':'%','country':'Estados Unidos'}
+    remember(key,data,300);return data
+
+
+MACRO_COUNTRIES={'USA':'Estados Unidos','ESP':'España','FRA':'Francia','DEU':'Alemania','JPN':'Japón','CHN':'China','GBR':'Reino Unido','IND':'India','BRA':'Brasil','AUS':'Australia','CAN':'Canadá'}
+MACRO_INDICATORS={'gdp':('NY.GDP.MKTP.KD.ZG','PIB real · crecimiento anual'),'inflation':('FP.CPI.TOTL.ZG','Inflación · IPC anual'),'unemployment':('SL.UEM.TOTL.ZS','Desempleo · estimación OIT')}
+
+
+@app.get('/api/macro')
+async def macro(indicator:str='gdp'):
+    if indicator not in MACRO_INDICATORS:raise HTTPException(422,'Indicador no válido.')
+    key='macro:'+indicator
+    if (data:=recalled(key)) is not None:return data
+    code,label=MACRO_INDICATORS[indicator]
+    year=datetime.now(timezone.utc).year
+    async with semaphore:
+        try:
+            response=await app.state.client.get('https://api.worldbank.org/v2/country/'+';'.join(MACRO_COUNTRIES)+'/indicator/'+code,params={'format':'json','per_page':1000,'date':f'{year-6}:{year}'})
+            response.raise_for_status();raw=response.json()
+            if not isinstance(raw,list) or len(raw)<2 or not isinstance(raw[1],list):raise ValueError('Respuesta vacía')
+        except (httpx.HTTPError,ValueError):raise HTTPException(502,'Las estadísticas del Banco Mundial no están disponibles.')
+    countries=[]
+    for country,name in MACRO_COUNTRIES.items():
+        values=sorted([{'year':int(r['date']),'value':float(r['value'])} for r in raw[1] if r.get('countryiso3code')==country and r.get('value') is not None and math.isfinite(float(r['value']))],key=lambda r:r['year'])
+        countries.append({'code':country,'country':name,'values':values,'value':values[-1]['value'] if values else None,'year':values[-1]['year'] if values else None})
+    data={'countries':countries,'indicator':indicator,'label':label,'source':'Banco Mundial · World Development Indicators','updated':raw[0].get('lastupdated'),'url':'https://data.worldbank.org/indicator/'+code,'unit':'%'}
+    remember(key,data,3600);return data
 
 
 # Keep API routing ahead of the static application mount.

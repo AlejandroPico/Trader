@@ -1,8 +1,8 @@
 name: Crear escritorio
 on:
   push:
-    branches: [main, 'codex/**']
-    tags: ['v*']
+    branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -17,11 +17,11 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: '26'
+          node-version: "26"
           cache: npm
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.14'
+          python-version: "3.15.2"
           cache: pip
       - run: npm ci
       - run: npm run icons
@@ -30,11 +30,14 @@ jobs:
       - if: runner.os == 'Linux'
         run: pip install 'pywebview[qt]==6.2.1'
       - run: python scripts/package_desktop.py
+      - run: python scripts/smoke_desktop.py
       - if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $compiler = Get-ChildItem 'C:\Program Files (x86)\Inno Setup*\ISCC.exe' | Select-Object -First 1
-          if ($compiler) { & $compiler.FullName scripts/trader.iss; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }
+          if (-not $compiler) { throw "No se ha encontrado el compilador del instalador" }
+          & $compiler.FullName scripts/trader.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v7
         with:
           name: Trader-${{ runner.os }}-${{ runner.arch }}

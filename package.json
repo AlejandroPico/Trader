@@ -1,7 +1,8 @@
 {
   "name": "trader",
   "version": "0.1.0",
-  "private": true, "type": "module",
+  "private": true,
+  "type": "module",
   "scripts": {
     "start": "ng serve --host 127.0.0.1",
     "build": "ng build",
@@ -31,6 +32,7 @@
     "@angular/cli": "22.2.5",
     "@angular/compiler-cli": "22.2.4",
     "@types/topojson-client": "3.1.5",
+    "prettier": "3.9.10",
     "sharp": "0.35.5",
     "typescript": "6.0.3"
   }

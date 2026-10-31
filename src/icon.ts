@@ -1,5 +1,53 @@
-import {Component,Input} from '@angular/core';
-const paths:Record<string,string>={
- home:'M3 10 12 3l9 7v10H3V10ZM9 20v-7h6v7',chart:'M4 3v18h17M7 15l4-5 4 3 6-8',globe:'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM3 12h18M12 3c5 5 5 13 0 18-5-5-5-13 0-18Z',heat:'M3 3h10v8H3ZM16 3h5v8h-5ZM3 14h6v7H3ZM12 14h9v7h-9Z',filter:'M3 4h18l-7 8v7l-4 2v-9L3 4Z',wallet:'M3 6h16v14H3V6ZM3 6V4l14-2v4M15 11h7v5h-7v-5Z',bell:'M5 17h14l-2-4V9a5 5 0 0 0-10 0v4l-2 4ZM10 21h4',search:'M20 20l-5-5M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z',plus:'M12 4v16M4 12h16',close:'m6 6 12 12M6 18 18 6',chevron:'m9 5 7 7-7 7',down:'m5 9 7 7 7-7',settings:'M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8ZM9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1 1-3Z',expand:'M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5',external:'M14 3h7v7M21 3 10 14M10 3H3v18h18v-7',download:'M12 3v12m-5-5 5 5 5-5M3 16v5h18v-5',upload:'M12 15V3m-5 5 5-5 5 5M3 16v5h18v-5',star:'m12 3 3 6 6 1-4 5 1 6-6-3-6 3 1-6-4-5 6-1 3-6Z',trend:'m3 19 18-14M3 19h4M21 5v4',ruler:'m3 17 14-14 4 4L7 21l-4-4ZM7 13l3 3M11 9l3 3M15 5l3 3',refresh:'M20 10a8 8 0 1 0-1 8M20 3v7h-7',moon:'M21 13A9 9 0 0 1 11 3a9 9 0 1 0 10 10Z',sun:'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM12 2v2M12 20v2M2 12h2M20 12h2M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2',check:'m4 12 5 5L20 6',trash:'M3 6h18M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7',arrow:'M4 12h16m-6-6 6 6-6 6',user:'M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM4 21v-3a8 8 0 0 1 16 0v3',layers:'m12 3 10 5-10 5L2 8l10-5ZM2 12l10 5 10-5M2 16l10 5 10-5',info:'M12 11v6M12 7v1M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z',menu:'M3 6h18M3 12h18M3 18h18',line:'M3 18 8 9l5 5 8-11',candle:'M7 3v18M3 7h8v9H3V7ZM17 3v18M13 5h8v7h-8V5',cloud:'M6 18a5 5 0 0 1-1-10 7 7 0 0 1 13-1 6 6 0 0 1 0 11H6Z'};
-@Component({selector:'t-icon',standalone:true,template:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path [attr.d]="path"/></svg>'})
-export class IconComponent{@Input()name='chart';get path(){return paths[this.name]??paths['chart'];}}
+import { Component, Input } from "@angular/core";
+const paths: Record<string, string> = {
+  calendar:
+    "M4 5h16v16H4V5ZM8 3v4M16 3v4M4 10h16M8 14h1M12 14h1M16 14h1M8 17h1M12 17h1",
+  news: "M4 3h13v17H4V3ZM17 7h4v13H4M7 7h7M7 11h7M7 15h3M12 15h2",
+  home: "M3 10 12 3l9 7v10H3V10ZM9 20v-7h6v7",
+  chart: "M4 3v18h17M7 15l4-5 4 3 6-8",
+  globe:
+    "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM3 12h18M12 3c5 5 5 13 0 18-5-5-5-13 0-18Z",
+  heat: "M3 3h10v8H3ZM16 3h5v8h-5ZM3 14h6v7H3ZM12 14h9v7h-9Z",
+  filter: "M3 4h18l-7 8v7l-4 2v-9L3 4Z",
+  wallet: "M3 6h16v14H3V6ZM3 6V4l14-2v4M15 11h7v5h-7v-5Z",
+  bell: "M5 17h14l-2-4V9a5 5 0 0 0-10 0v4l-2 4ZM10 21h4",
+  search: "M20 20l-5-5M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z",
+  plus: "M12 4v16M4 12h16",
+  close: "m6 6 12 12M6 18 18 6",
+  chevron: "m9 5 7 7-7 7",
+  down: "m5 9 7 7 7-7",
+  settings:
+    "M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8ZM9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1 1-3Z",
+  expand: "M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5",
+  external: "M14 3h7v7M21 3 10 14M10 3H3v18h18v-7",
+  download: "M12 3v12m-5-5 5 5 5-5M3 16v5h18v-5",
+  upload: "M12 15V3m-5 5 5-5 5 5M3 16v5h18v-5",
+  star: "m12 3 3 6 6 1-4 5 1 6-6-3-6 3 1-6-4-5 6-1 3-6Z",
+  trend: "m3 19 18-14M3 19h4M21 5v4",
+  ruler: "m3 17 14-14 4 4L7 21l-4-4ZM7 13l3 3M11 9l3 3M15 5l3 3",
+  refresh: "M20 10a8 8 0 1 0-1 8M20 3v7h-7",
+  moon: "M21 13A9 9 0 0 1 11 3a9 9 0 1 0 10 10Z",
+  sun: "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM12 2v2M12 20v2M2 12h2M20 12h2M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2",
+  check: "m4 12 5 5L20 6",
+  trash: "M3 6h18M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7",
+  arrow: "M4 12h16m-6-6 6 6-6 6",
+  user: "M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM4 21v-3a8 8 0 0 1 16 0v3",
+  layers: "m12 3 10 5-10 5L2 8l10-5ZM2 12l10 5 10-5M2 16l10 5 10-5",
+  info: "M12 11v6M12 7v1M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z",
+  menu: "M3 6h18M3 12h18M3 18h18",
+  line: "M3 18 8 9l5 5 8-11",
+  candle: "M7 3v18M3 7h8v9H3V7ZM17 3v18M13 5h8v7h-8V5",
+  cloud: "M6 18a5 5 0 0 1-1-10 7 7 0 0 1 13-1 6 6 0 0 1 0 11H6Z",
+};
+@Component({
+  selector: "t-icon",
+  standalone: true,
+  template:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path [attr.d]="path"/></svg>',
+})
+export class IconComponent {
+  @Input() name = "chart";
+  get path() {
+    return paths[this.name] ?? paths["chart"];
+  }
+}

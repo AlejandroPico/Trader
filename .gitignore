@@ -3,6 +3,8 @@ dist/
 build/
 .angular/
 .venv/
+.venv*/
+.runtimes/
 __pycache__/
 *.pyc
 .env
